@@ -3,36 +3,27 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>GameHub - Accueil (final)</title>
+<title>GameHub - Accueil (Public/Supabase)</title>
 <style>
+  /* ... (Vos styles CSS restent les mêmes) ... */
   body { margin:0; font-family:Arial,Helvetica,sans-serif; background:#0f1724; color:#fff; text-align:center; }
   .wrap{max-width:900px;margin:28px auto;padding:20px;}
   .card{background:#111;padding:18px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.6); margin-bottom:18px;}
   input{padding:10px 12px;border-radius:8px;border:1px solid #333;width:70%;max-width:320px}
-  /* Style des boutons génériques */
-  button, .menu-link {
-    padding:10px 16px;
-    border-radius:8px;
-    border:0;
-    background:#ff8c00;
-    color:#08101a;
-    font-weight:700;
-    cursor:pointer;
-    text-decoration: none; /* Pour les liens <a> */
-    display: block; /* Pour les liens <a> */
-    text-align: center;
-  }
+  button, .menu-link{padding:10px 16px;border-radius:8px;border:0;background:#ff8c00;color:#08101a;font-weight:700;cursor:pointer;text-decoration:none;display:block;text-align:center;}
   button.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.06)}
   .small{color:#9aa0a6;font-size:14px}
   ol{text-align:left;margin:8px auto;padding-left:18px;max-width:400px}
   .error{color:#ffb3a7;margin-top:10px}
   .actions{margin-top:12px;display:flex;gap:8px;justify-content:center}
-  /* Style pour le score personnel dans le bouton */
   .game-score{font-weight:normal;color:rgba(8, 16, 26, 0.7);margin-left:8px;}
-  /* Styles spécifiques */
   .shop-btn { background:#00aaff; color:white; font-weight:700; }
   .intranet-btn { background:#1e90ff; color:white; font-weight:700; } 
 </style>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase_config.js"></script>
+
 </head>
 <body>
   <div class="wrap">
@@ -45,10 +36,10 @@
       </div>
       <div class="actions">
         <button id="enterBtn">Entrer</button>
-        <button id="clearBtn" class="ghost">Effacer localStorage</button>
+        <button id="clearBtn" class="ghost">Effacer données locales</button>
       </div>
       <div id="loginError" class="error" style="display:none;"></div>
-      <p class="small">Ton pseudo sera stocké localement (pas de serveur).</p>
+      <p class="small">Le pseudo est nécessaire pour le classement en ligne.</p>
     </div>
 
     <div id="menuCard" class="card" style="display:none;">
@@ -72,10 +63,7 @@
         
         <div style="margin-top:15px; display:flex; gap: 8px;">
             <button class="menu-link shop-btn" onclick="go('boutique.html')">🛒 Boutique</button>
-
-            <a href="http://10.100.200.1" target="_blank" class="menu-link intranet-btn">
-                🌐 Intranet
-            </a>
+            <a href="http://10.100.200.1" target="_blank" class="menu-link intranet-btn">🌐 Intranet</a>
         </div>
 
         <div class="actions" style="margin-top:12px">
@@ -85,15 +73,16 @@
     </div>
 
     <div class="card">
-      <h2>🏆 Classements par Jeu</h2>
+      <h2>🏆 Classement Mondial</h2>
       <div id="leaderboardContainer">
+        <p class="small">Chargement des scores en cours...</p>
         </div>
-      <p class="small">Top 3 de chaque jeu (meilleur score unique par joueur/jeu)</p>
+      <p class="small">Top 3 de chaque jeu (Base de données en ligne)</p>
     </div>
   </div>
 
 <script>
-/* --- MAP des noms de jeu pour la cohérence entre les fichiers et le classement --- */
+/* --- MAP des noms de jeu --- */
 const GAME_MAP = {
     'jeu1.html': 'Jeu 1 — Réaction',
     'jeu2.html': 'Jeu 2 — Évitement',
@@ -108,7 +97,6 @@ const GAME_MAP = {
 
 /* --------- Utilitaires --------- */
 
-// Génère une couleur hexadécimale à partir d'une chaîne (Avatar Dynamique)
 function stringToColor(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -122,17 +110,6 @@ function stringToColor(str) {
     return color;
 }
 
-function safeGetScores(){
-  try {
-    const scores = JSON.parse(localStorage.getItem('gh_scores') || '[]');
-    return scores.map(s => ({...s, game: s.game || 'Jeu Inconnu'}));
-  } catch(e){
-    localStorage.removeItem('gh_scores');
-    return [];
-  }
-}
-function safeSetScores(arr){ localStorage.setItem('gh_scores', JSON.stringify(arr)); }
-
 /* --------- Login / Menu --------- */
 const input = document.getElementById('playerName');
 const enterBtn = document.getElementById('enterBtn');
@@ -143,8 +120,10 @@ enterBtn.addEventListener('click', login);
 input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') login(); });
 
 clearBtn.addEventListener('click', ()=>{
-  if(confirm('Effacer toutes les données locales (scores + pseudo) ?')) {
-    localStorage.removeItem('gh_scores'); localStorage.removeItem('gh_player'); localStorage.removeItem('gh_avatar');
+  if(confirm('Effacer le pseudo et tous les scores locaux (si existants) ?')) {
+    localStorage.removeItem('gh_player'); 
+    localStorage.removeItem('gh_avatar');
+    // NOTE: On ne touche pas aux scores locaux car la sauvegarde en ligne est prioritaire
     location.reload();
   }
 });
@@ -159,18 +138,20 @@ function login(){
   loginError.style.display='none';
   localStorage.setItem('gh_player', name);
   localStorage.setItem('gh_avatar', name[0].toUpperCase());
+  
   showMenu(name);
   loadScores();
 }
 
 function logout(){
-  localStorage.removeItem('gh_player'); localStorage.removeItem('gh_avatar');
+  localStorage.removeItem('gh_player'); 
+  localStorage.removeItem('gh_avatar');
   document.getElementById('menuCard').style.display='none';
   document.getElementById('loginCard').style.display='block';
   input.value='';
 }
 
-/* --------- Affichage du Menu (AMÉLIORÉ) --------- */
+/* --------- Affichage du Menu --------- */
 function showMenu(name){
   document.getElementById('loginCard').style.display='none';
   document.getElementById('menuCard').style.display='block';
@@ -179,12 +160,10 @@ function showMenu(name){
   const avatarElement = document.getElementById('avatar');
   const avatarChar = (localStorage.getItem('gh_avatar') || name[0].toUpperCase());
   
-  // 1. Avatar Dynamique : Couleur basée sur le pseudo
   avatarElement.innerText = avatarChar;
   avatarElement.style.background = stringToColor(name);
 
-  // 2. Mise à jour des scores personnels dans le menu
-  updatePersonalScores(name);
+  // NOTE: Les scores personnels pourraient être chargés ici, mais nous simplifions en nous concentrant sur le classement mondial
 }
 
 document.addEventListener('DOMContentLoaded', ()=>{
@@ -196,88 +175,70 @@ document.addEventListener('DOMContentLoaded', ()=>{
   loadScores();
 });
 
-/* --------- Mise à jour des Scores Personnels --------- */
-function updatePersonalScores(playerName) {
-    const allScores = safeGetScores();
-    const personalBest = {};
 
-    // Trouver le meilleur score de ce joueur pour chaque jeu
-    allScores.forEach(s => {
-        if (s.name === playerName) {
-            if (!personalBest[s.game] || s.score > personalBest[s.game]) {
-                personalBest[s.game] = s.score;
-            }
-        }
-    });
-
-    // Mettre à jour les boutons du menu
-    for (const [file, gameName] of Object.entries(GAME_MAP)) {
-        // Exclure la boutique et les catégories non jouables du menu des jeux
-        if (file === 'boutique.html' || gameName === 'Achat (Bonus)') continue;
-        
-        const btnId = `btn${file.replace('.html', '').toUpperCase()}`;
-        const btn = document.getElementById(btnId);
-        
-        if (btn) {
-            let baseName = gameName;
-            
-            if (personalBest[gameName] !== undefined) {
-                 baseName += `<span class="game-score">(${personalBest[gameName]})</span>`;
-            }
-            
-            btn.innerHTML = baseName;
-        }
-    }
-}
-
-
-/* --------- Leaderboard (MIS À JOUR) --------- */
-function loadScores(){
+/* --------- Leaderboard MONDIAUX (NOUVEAU) --------- */
+async function loadScores(){
   const container = document.getElementById('leaderboardContainer');
-  const allScores = safeGetScores();
-  container.innerHTML = ''; 
+  container.innerHTML = '<p class="small">Connexion à la base de données...</p>';
 
+  // 1. Récupérer tous les scores depuis la table Supabase 'scores'
+  const { data: allScores, error } = await supabaseClient
+    .from('scores')
+    .select('player_name, game_name, score, moves')
+    .limit(2000); 
+
+  if (error) {
+    console.error("Erreur de chargement des scores:", error);
+    container.innerHTML = '<p class="error">Impossible de charger le classement. Vérifiez la connexion Supabase ou le RLS.</p>';
+    return;
+  }
+
+  // 2. Traitement Côté Client: Filtrer et garder le meilleur score par joueur/jeu
   const bestScoresByGame = {};
-  const playerName = localStorage.getItem('gh_player');
+  for (const scoreEntry of allScores) {
+    const game = scoreEntry.game_name;
+    const playerName = scoreEntry.player_name;
 
-  // 1. Regrouper les meilleurs scores uniques par joueur/jeu
-  for(const score of allScores){
-    const game = score.game;
-    if (!bestScoresByGame[game]) {
-      bestScoresByGame[game] = {};
-    }
-    const currentBest = bestScoresByGame[game][score.name];
-    if (!currentBest || score.score > currentBest.score) {
-      bestScoresByGame[game][score.name] = score;
-    }
-  }
+    if (!bestScoresByGame[game]) bestScoresByGame[game] = {};
+    const currentBest = bestScoresByGame[game][playerName];
 
-  const gameKeys = Object.keys(bestScoresByGame);
-  if (gameKeys.length === 0) {
-      const p = document.createElement('p');
-      p.textContent = 'Aucun score enregistré pour l\'instant.';
-      p.className = 'small';
-      container.appendChild(p);
-      return;
-  }
-  
-  // S'assurer de l'ordre d'affichage des jeux (basé sur le GAME_MAP)
-  const orderedGameKeys = Object.values(GAME_MAP).filter(name => gameKeys.includes(name));
-
-  // 2. Traiter chaque jeu (dans l'ordre)
-  for(const game of orderedGameKeys){
-    let scoresForGame = Object.values(bestScoresByGame[game]);
-
-    // 3. Tri (spécial pour le Taquin : score le plus bas est le meilleur)
-    if (game === 'Jeu 7 — Puzzle Taquin') {
-        // Tri croissant pour le Taquin (coups les plus bas en premier)
-        scoresForGame.sort((a,b)=>a.score - b.score);
+    const isTaquin = game.includes('Puzzle Taquin');
+    
+    let isBetter;
+    
+    // Logique de tri: MAX pour la plupart des jeux, MIN pour le Taquin (coups/temps)
+    if (isTaquin) {
+        // Taquin: Moins de temps (score) est mieux
+        isBetter = !currentBest || scoreEntry.score < currentBest.score;
     } else {
-        // Tri décroissant pour tous les autres jeux
-        scoresForGame.sort((a,b)=>b.score - a.score);
+        // Autres: Plus de points est mieux
+        isBetter = !currentBest || scoreEntry.score > currentBest.score;
     }
 
-    // 4. Créer l'élément de classement pour ce jeu (Top 3)
+    if (isBetter) {
+      bestScoresByGame[game][playerName] = scoreEntry;
+    }
+  }
+
+  // 3. Affichage du Classement
+  container.innerHTML = '';
+  const playerName = localStorage.getItem('gh_player');
+  const gameNames = Object.values(GAME_MAP);
+  
+  // Afficher les jeux dans l'ordre du MAP
+  for (const game of gameNames) {
+    const scoresForGame = Object.values(bestScoresByGame[game] || {});
+    
+    if (scoresForGame.length === 0) continue;
+
+    // Trier les scores pour le Top 3
+    if (game.includes('Puzzle Taquin')) {
+        scoresForGame.sort((a, b) => a.score - b.score); // MIN score (temps)
+    } else {
+        scoresForGame.sort((a, b) => b.score - a.score); // MAX score (points)
+    }
+
+    // Création de l'affichage
     const gameTitle = document.createElement('h3');
     gameTitle.textContent = game;
     gameTitle.style.marginTop = '20px';
@@ -288,38 +249,33 @@ function loadScores(){
     ol.style.margin = '8px auto';
     container.appendChild(ol);
 
-    // 5. Afficher le Top 3 (slice(0, 3)) avec mise en évidence du joueur
-    const topScores = scoresForGame.slice(0, 3);
-    
-    if (topScores.length === 0) {
-        const li = document.createElement('li');
-        li.textContent = "Soyez le premier à jouer !";
-        li.style.listStyleType = 'none';
-        ol.appendChild(li);
-    } else {
-        topScores.forEach(s=>{
-            const li = document.createElement('li');
-            
-            // Affichage adapté (ex: pour le Taquin)
-            let scoreText = s.score.toLocaleString('fr-FR');
-            if (game === 'Jeu 7 — Puzzle Taquin') {
-                 scoreText = `${s.score} coups`;
-            } else if (game === 'Jeu 8 — Clicker') {
-                 scoreText = `${s.score.toLocaleString('fr-FR')} ressources`;
-            } else if (game === 'Achat (Bonus)') {
-                 scoreText = `${s.score.toLocaleString('fr-FR')} points`;
-            }
-            
-            li.textContent = `${s.name} — ${scoreText}`;
-            
-            // Mise en évidence du joueur dans le classement
-            if (s.name === playerName) {
-                li.style.fontWeight = 'bold';
-                li.style.color = '#00ff66'; // Vert pour l'accentuation
-            }
-            ol.appendChild(li);
-        });
-    }
+    // Afficher le Top 3
+    scoresForGame.slice(0, 3).forEach(s => {
+      const li = document.createElement('li');
+      
+      let scoreText = s.score.toLocaleString('fr-FR');
+      
+      // Formatage spécifique pour le Taquin et le Clicker
+      if (game.includes('Puzzle Taquin')) {
+          const minutes = Math.floor(s.score / 60);
+          const seconds = s.score % 60;
+          scoreText = `${minutes}:${seconds < 10 ? '0' : ''}${seconds} (Coups: ${s.moves || '?'})`;
+      } else if (game.includes('Clicker') || game.includes('Achat')) {
+          scoreText = `${s.score.toLocaleString('fr-FR')} ressources`;
+      }
+      
+      li.textContent = `${s.player_name} — ${scoreText}`;
+      
+      if (s.player_name === playerName) {
+        li.style.fontWeight = 'bold';
+        li.style.color = '#00ff66';
+      }
+      ol.appendChild(li);
+    });
+  }
+  
+  if (container.innerHTML === '') {
+      container.innerHTML = '<p class="small">Aucun score en ligne pour l\'instant. Jouez le premier !</p>';
   }
 }
 
