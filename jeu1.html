@@ -19,7 +19,6 @@ button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:poi
     cursor:pointer; 
     transition: transform 0.1s ease-out, background 0.5s ease;
     box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
-    /* Style initial de la cible */
     transform: scale(1);
 }
 #gameArea { 
@@ -31,7 +30,6 @@ button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:poi
     margin:20px auto; 
     border-radius:10px; 
     border: 2px solid #333;
-    /* Permet de détecter les clics manqués */
     cursor: crosshair; 
 }
 #instructions {
@@ -57,6 +55,10 @@ button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:poi
     transition: opacity 0.3s;
 }
 </style>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase_config.js"></script>
+<script src="online_functions.js"></script>
 </head>
 <body>
 
@@ -116,16 +118,13 @@ const accuracyDisplay = document.getElementById("accuracy");
 // --- Listeners ---
 document.getElementById("start").onclick = startGame;
 target.onclick = hitTarget;
-area.addEventListener('click', missTarget); // Capture les clics manqués sur la zone de jeu
+area.addEventListener('click', missTarget); 
 
 // --- Logique du Démarrage ---
-
 function startGame(){
-    // Nettoyage
     if (targetTimeout) clearTimeout(targetTimeout);
     if (difficultyInterval) clearInterval(difficultyInterval);
     
-    // Réinitialisation de l'état
     score = 0;
     lives = MAX_MISSES;
     hits = 0;
@@ -134,7 +133,6 @@ function startGame(){
     maxReactionTime = INITIAL_MAX_TIME;
     currentTargetSize = INITIAL_TARGET_SIZE;
 
-    // Réinitialisation visuelle de la cible
     target.style.background = 'green';
     target.style.transform = 'scale(1)';
     target.style.width = `${currentTargetSize}px`;
@@ -145,23 +143,20 @@ function startGame(){
 }
 
 // --- Mise à Jour des Statistiques (Centralisée) ---
-
 function updateGameStats() {
     scoreDisplay.textContent = score;
     
-    // Affichage des vies (cœurs)
     livesContainer.innerHTML = '';
     for(let i = 0; i < MAX_MISSES; i++) {
         const span = document.createElement('span');
         span.classList.add('life-icon');
         span.innerHTML = '❤️';
         if (i >= lives) {
-            span.style.opacity = '0.3'; // Cœurs perdus
+            span.style.opacity = '0.3';
         }
         livesContainer.appendChild(span);
     }
 
-    // Calcul et affichage de la précision
     const totalAttempts = hits + misses;
     if (totalAttempts > 0) {
         const accuracy = Math.round((hits / totalAttempts) * 100);
@@ -172,37 +167,30 @@ function updateGameStats() {
 }
 
 // --- Gestion des Cibles (Mouvement et Temps) ---
-
 function moveTarget(){
     if(!active) return;
     
-    // 1. Réinitialisation du temps
     if (targetTimeout) clearTimeout(targetTimeout);
     if (difficultyInterval) clearInterval(difficultyInterval);
     
-    // 2. Calcul des limites de difficulté (Temps et Taille)
     const timeLimit = Math.max(MIN_TIME_LIMIT, INITIAL_MAX_TIME - (score * TIME_DECREASE_PER_POINT));
-    
     currentTargetSize = Math.max(MIN_TARGET_SIZE, INITIAL_TARGET_SIZE - (score * SIZE_DECREASE_PER_POINT));
+    
     target.style.width = `${currentTargetSize}px`;
     target.style.height = `${currentTargetSize}px`;
 
-
-    // 3. Déclenchement du Game Over si temps dépassé
     targetTimeout = setTimeout(() => {
         loseLife("Temps écoulé");
-        moveTarget(); // Passage à la cible suivante
+        moveTarget(); 
     }, timeLimit);
 
-    // 4. Animation de changement de couleur (Vert -> Rouge)
-    target.style.background = 'lime'; // Couleur initiale vive
+    target.style.background = 'lime'; 
     let colorStep = 0;
     
     difficultyInterval = setInterval(() => {
         if (!active) return clearInterval(difficultyInterval);
         colorStep += 1;
         
-        // Interpolation de Vert (0, 255, 0) vers Rouge (255, 0, 0)
         const greenValue = 255 - Math.min(255, Math.floor(255 * (colorStep / (timeLimit / 10))));
         const redValue = Math.min(255, Math.floor(255 * (colorStep / (timeLimit / 10))));
         target.style.background = `rgb(${redValue}, ${greenValue}, 0)`;
@@ -210,10 +198,9 @@ function moveTarget(){
         if (colorStep * 10 >= timeLimit) {
              clearInterval(difficultyInterval);
         }
-    }, timeLimit / 10); // Mise à jour de la couleur 10 fois pendant le temps imparti
+    }, timeLimit / 10);
 
 
-    // 5. Calcul de la nouvelle position
     const areaWidth = area.clientWidth;
     const areaHeight = area.clientHeight;
     
@@ -224,20 +211,16 @@ function moveTarget(){
     target.style.top = y + "px";
     target.style.display = "block";
     
-    // Effet d'apparition (légère compression puis retour à la normale)
     target.style.transform = 'scale(0.8)';
     setTimeout(() => { target.style.transform = 'scale(1)'; }, 10);
 }
 
 // --- Gestion des Actions du Joueur ---
-
 function hitTarget(event){
     if(!active) return;
     
-    // Stoppe l'événement de clic de l'aire de jeu (important pour ne pas avoir de miss)
     event.stopPropagation(); 
     
-    // Arrête les timers
     if (targetTimeout) clearTimeout(targetTimeout);
     if (difficultyInterval) clearInterval(difficultyInterval);
     
@@ -250,11 +233,9 @@ function hitTarget(event){
 
 function missTarget(event){
     if(!active) return;
-    // Vérifie que le clic vient bien de l'aire de jeu (et non de la cible elle-même)
     if (event.target.id === 'gameArea') {
-        loseLife("Cible manquée");
+        loseLife("Cible manquée (clic à côté)");
         
-        // Arrête les timers pour relancer immédiatement la cible
         if (targetTimeout) clearTimeout(targetTimeout);
         if (difficultyInterval) clearInterval(difficultyInterval);
         moveTarget(); 
@@ -266,12 +247,11 @@ function loseLife(reason) {
     lives--;
     misses++;
     
-    target.style.background = 'red'; // Flash d'erreur
+    target.style.background = 'red'; 
     
     if (lives <= 0) {
         gameOver(`Perdu : ${reason} !`);
     } else {
-        // Optionnel: Afficher un feedback rapide
         console.log(`Vie perdue: ${reason}. Vies restantes: ${lives}`);
     }
     updateGameStats();
@@ -279,7 +259,6 @@ function loseLife(reason) {
 
 
 // --- Fin de Jeu ---
-
 function gameOver(message){
     active = false;
     target.style.display = "none";
@@ -287,22 +266,12 @@ function gameOver(message){
     if (targetTimeout) clearTimeout(targetTimeout);
     if (difficultyInterval) clearInterval(difficultyInterval);
     
+    // 📢 SAUVEGARDE EN LIGNE
     saveScore(score, "Jeu 1 — Réaction");
     
     alert(`${message} Score final : ${score}. Précision : ${accuracyDisplay.textContent}%`);
 }
 
-// Fonction de sauvegarde de score 
-function saveScore(score, game){
-    const name = localStorage.getItem("gh_player") || "Anonyme";
-    try {
-        const arr = JSON.parse(localStorage.getItem("gh_scores") || "[]");
-        arr.push({name, score, game});
-        localStorage.setItem("gh_scores", JSON.stringify(arr));
-    } catch(e) {
-        console.error("Erreur lors de la sauvegarde du score:", e);
-    }
-}
 
 // Initialisation de l'affichage des vies au chargement
 document.addEventListener('DOMContentLoaded', () => {
