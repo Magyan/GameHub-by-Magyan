@@ -88,7 +88,6 @@ button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:poi
     background: #444;
     cursor: not-allowed;
 }
-/* Style pour l'effet visuel de clic */
 .click-effect {
     position: absolute;
     top: 50%;
@@ -134,7 +133,6 @@ button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:poi
     color: #ccc;
     font-style: italic;
 }
-/* Style pour la notification de succès */
 #notification {
     position: fixed;
     top: 10px;
@@ -154,6 +152,10 @@ button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:poi
     transform: translateX(0) !important;
 }
 </style>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase_config.js"></script>
+<script src="online_functions.js"></script>
 </head>
 <body>
 
@@ -245,7 +247,6 @@ let gameState = {
     autoMultiplier: 1.0,
     upgrades: [],
     prestigePoints: 0,
-    // Multiplicateur Prestige ECHELONNÉ (Ex: 10 PP = x1.10; 100 PP = x2.00)
     prestigeMultiplier: 1.0, 
     achievementMultiplier: 1.0, 
     lastSaveTimestamp: Date.now(),
@@ -259,12 +260,15 @@ let saveLoop;
 // --- DOM ELEMENTS ---
 const resourcesDisplay = document.getElementById("resources");
 const rpsDisplay = document.getElementById("resourcesPerSecond");
+const summaryClickValue = document.getElementById("summaryClickValue");
+const summaryClickMult = document.getElementById("summaryClickMult");
+const summaryAutoMult = document.getElementById("summaryAutoMult");
+const prestigeStats = document.getElementById("prestigeStats");
 const achievementMultStats = document.getElementById("achievementMultStats");
 const lastSaveTime = document.getElementById("lastSaveTime");
 const upgradesContainer = document.getElementById("upgradesContainer");
 const achievementsContainer = document.getElementById("achievementsContainer");
 const notificationElement = document.getElementById("notification");
-
 
 document.getElementById("start").onclick = startGame;
 document.getElementById("mainClicker").onclick = clickResource;
@@ -489,7 +493,7 @@ function renderAchievements() {
 /**
  * Affiche une notification temporaire pour les succès.
  */
-function showNotification(message, reward) {
+function showNotification(message) {
     notificationElement.innerHTML = `${message} <br> (Multiplicateur amélioré)`;
     notificationElement.classList.add('show-notification');
     
@@ -507,9 +511,10 @@ function handlePrestige() {
         
         if (confirm(`Vous allez réinitialiser votre progression pour gagner ${pointsGained} points de Prestige. Continuer?`)) {
             gameState.prestigePoints += pointsGained;
-            // NOUVEAU: Multiplicateur Prestige ÉCHELONNÉ (Puissance exponentielle)
-            // Chaque point donne 1% du total, rendant le gain plus grand
             gameState.prestigeMultiplier = 1.0 + (gameState.prestigePoints * 0.01); 
+            
+            // 📢 SAUVEGARDE EN LIGNE: Enregistre le score avant la réinitialisation
+            saveScore(Math.floor(gameState.resources), GAME_NAME);
             
             startGame(true); 
             alert(`Prestige activé ! Multiplicateur actuel: x${gameState.prestigeMultiplier.toFixed(2)}`);
@@ -570,7 +575,7 @@ function updateDisplay() {
         if (btn) btn.disabled = gameState.resources < upgrade.currentCost;
         if (btn10) btn10.disabled = gameState.resources < getBulkCost(upgrade, 10);
         if (btn100) btn100.disabled = gameState.resources < getBulkCost(upgrade, 100);
-        if (btnMax) btnMax.disabled = maxAmount === 0; // Désactiver si Max est 0 ou 1
+        if (btnMax) btnMax.disabled = maxAmount === 0; 
     });
 }
 
@@ -584,7 +589,6 @@ function renderUpgrades() {
             effectText = u.text.replace(u.baseEffect, (nextMult * 100).toFixed(0) + '%');
         } else if (u.type.includes('click') || u.type.includes('auto')) {
             const nextProd = u.baseEffect * getTierMultiplier(u.count + 1, u.tiers);
-            // NOUVEAU: Affichage décimal pour le clic de base
             const formatDecimal = u.type === 'click' ? 2 : (u.baseEffect < 1 ? 1 : 0);
             effectText = u.text.replace(u.baseEffect, nextProd.toFixed(formatDecimal));
         }
@@ -613,7 +617,7 @@ function renderUpgrades() {
 }
 
 function renderBoostsSummary() {
-    summaryClickValue.textContent = calculateActualClickValue().toFixed(2); // 2 décimales pour les clics
+    summaryClickValue.textContent = calculateActualClickValue().toFixed(2); 
     summaryClickMult.textContent = `x${(gameState.clickMultiplier).toFixed(2)}`;
     summaryAutoMult.textContent = `x${(gameState.autoMultiplier).toFixed(2)}`;
     
@@ -665,6 +669,7 @@ function saveGame() {
         localStorage.setItem(SAVE_KEY, JSON.stringify(saveObject));
         lastSaveTime.textContent = now.toLocaleTimeString('fr-FR');
         
+        // 📢 SAUVEGARDE EN LIGNE (Fréquente)
         saveScore(Math.floor(gameState.resources), GAME_NAME); 
     } catch (e) {
         console.error("Erreur de sauvegarde:", e);
