@@ -32,6 +32,10 @@ button{padding:10px 20px;border-radius:8px;margin:10px;border:0;font-weight:bold
     margin-top: 15px;
 }
 </style>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase_config.js"></script>
+<script src="online_functions.js"></script>
 </head>
 <body>
 
@@ -72,7 +76,7 @@ let nextDir;
 let currentSpeed;
 let walls = [];
 let gameTimeSeconds = 0;
-let active = false; // NOUVEAU: Indicateur d'état du jeu
+let active = false; // Indicateur d'état du jeu
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -89,12 +93,10 @@ canvas.addEventListener('touchmove', handleTouchMove, false);
 
 function handleKeyInput(e) {
     if (!active && e.key.startsWith("Arrow")) {
-        // Permet de démarrer le jeu en appuyant sur une flèche
         start(); 
     }
-    if (!active) return; // Ignore toute autre commande si le jeu est perdu
+    if (!active) return;
 
-    // Utiliser nextDir pour mettre en file d'attente la prochaine direction
     if (e.key === "ArrowUp" && dir !== "down") nextDir = "up";
     if (e.key === "ArrowDown" && dir !== "up") nextDir = "down";
     if (e.key === "ArrowLeft" && dir !== "right") nextDir = "left";
@@ -104,7 +106,7 @@ function handleKeyInput(e) {
 function handleTouchStart(e) {
     e.preventDefault();
     if (!active) {
-        start(); // Démarrer au premier swipe/toucher
+        start(); 
         return;
     }
     touchStartX = e.touches[0].clientX;
@@ -121,16 +123,13 @@ function handleTouchMove(e) {
     const diffY = touchEndY - touchStartY;
 
     if (Math.abs(diffX) > Math.abs(diffY)) {
-        // Mouvement Horizontal (Gauche/Droite)
         if (diffX > 0 && dir !== "left") nextDir = "right";
         else if (diffX < 0 && dir !== "right") nextDir = "left";
     } else {
-        // Mouvement Vertical (Haut/Bas)
         if (diffY > 0 && dir !== "up") nextDir = "down";
         else if (diffY < 0 && dir !== "down") nextDir = "up";
     }
     
-    // Une fois la direction déterminée, on réinitialise pour le prochain swipe distinct
     touchStartX = null;
     touchStartY = null;
 }
@@ -140,7 +139,6 @@ function handleTouchMove(e) {
 function start(){
     if (loop) clearInterval(loop);
     
-    // Réinitialisation de l'état
     active = true;
     snake = [{x: Math.floor(GRID_SIZE / 4), y: Math.floor(GRID_SIZE / 2)}]; 
     dir = "right";
@@ -156,7 +154,6 @@ function start(){
     document.getElementById("score").innerText = 0;
     speedDisplay.innerText = currentSpeed;
     
-    // Lancement de la boucle de jeu
     loop = setInterval(gameCycle, currentSpeed);
 }
 
@@ -169,7 +166,6 @@ function gameCycle() {
     update();
     gameTimeSeconds++;
     
-    // Si la vitesse a changé, la boucle doit être relancée
     if (currentSpeed !== loop._delay) {
         clearInterval(loop);
         loop = setInterval(gameCycle, currentSpeed);
@@ -190,7 +186,6 @@ function rand(isBonus = false){
             type: isBonus ? 'bonus' : 'normal'
         };
         i++;
-    // S'assurer que la nourriture et les murs n'apparaissent pas sur le corps
     } while (snake.some(s => s.x === newFood.x && s.y === newFood.y) || 
              walls.some(w => w.x === newFood.x && w.y === newFood.y) || i > maxTries);
     
@@ -200,7 +195,6 @@ function rand(isBonus = false){
 
 // --- Logique de Mise à Jour (Boucle de Jeu) ---
 function update(){
-    // Appliquer la direction en file d'attente
     dir = nextDir; 
 
     const head = {...snake[0]};
@@ -210,12 +204,11 @@ function update(){
     if(dir==="left") head.x--;
     if(dir==="right") head.x++;
 
-    // 1. Détection de collision (Mur, Soi-même, Murs Temporaires)
+    // 1. Détection de collision
     if(head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE || hitSelf(head) || hitWall(head)) {
         return gameOver();
     }
 
-    // Ajouter la nouvelle tête
     snake.unshift(head);
 
     let ateFood = false;
@@ -230,7 +223,7 @@ function update(){
     
     // 3. Gestion de la Nourriture Bonus (Or)
     if(bonusFood && head.x === bonusFood.x && head.y === bonusFood.y){
-        pointsGained += 5; // Plus de points !
+        pointsGained += 5; 
         bonusFood = null; 
         ateFood = true;
     } 
@@ -239,20 +232,16 @@ function update(){
         score += pointsGained;
         document.getElementById("score").innerText = score;
         
-        // ACCÉLÉRATION : Plus le score est haut, plus on est rapide
         if (currentSpeed > MIN_SPEED) { 
              currentSpeed = Math.max(MIN_SPEED, currentSpeed - (SPEED_DECREASE_PER_POINT * pointsGained));
-             // Forcer le changement de vitesse dans la prochaine gameCycle
              loop._delay = currentSpeed; 
         }
         
-        // Chance d'apparition de nourriture bonus (par exemple, 20% après avoir mangé)
         if (!bonusFood && Math.random() < 0.20) {
             bonusFood = rand(true);
         }
 
     } else {
-        // Déplacer le serpent (supprimer la queue)
         snake.pop();
     }
 
@@ -264,23 +253,18 @@ function update(){
 
 // --- Gestion des Murs Temporaires (NOUVEAU) ---
 function updateWalls() {
-    // Fréquence de mise à jour des murs (toutes les 15s du temps de jeu)
     const framesPerSecond = 1000 / currentSpeed;
     const framesPerCycle = WALL_CYCLE_TIME * framesPerSecond;
     
-    // Vérifier si nous sommes au début d'un cycle (0s, 15s, 30s...)
     if (gameTimeSeconds % framesPerCycle === 0) {
         
-        // Vider les murs après la première moitié du cycle (murs INVISIBLES)
         if ((gameTimeSeconds / framesPerCycle) % 2 !== 0) {
             walls = [];
         } else {
-             // Générer de nouveaux murs (murs VISIBLES)
              const corridorY = Math.floor(GRID_SIZE / 3) + Math.floor(Math.random() * (GRID_SIZE / 3));
              
              walls = [];
              for(let x = 3; x < GRID_SIZE - 3; x++) {
-                 // Laisser un passage de 3 cases au centre
                  if (x < 8 || x > 11) {
                      walls.push({x: x, y: corridorY, active: true});
                  }
@@ -291,7 +275,6 @@ function updateWalls() {
 
 // --- Dessin sur le Canvas ---
 function draw(){
-    // Arrière-plan
     ctx.fillStyle = "#111";
     ctx.fillRect(0,0,400,400);
 
@@ -338,25 +321,13 @@ function hitWall(head){
 
 // --- Fin de Jeu ---
 function gameOver(){
-    // Correction de la boucle : Mettre l'état à false et arrêter l'intervalle
     active = false;
     clearInterval(loop);
     
+    // 📢 SAUVEGARDE EN LIGNE
     saveScore(score, "Jeu 4 — Snake");
     
     alert("GAME OVER ! Score final : " + score);
-}
-
-// --- Fonction de Sauvegarde de Score ---
-function saveScore(score,game){
-    const name = localStorage.getItem("gh_player") || "Anonyme";
-    try {
-        const arr = JSON.parse(localStorage.getItem("gh_scores") || "[]");
-        arr.push({name,score,game});
-        localStorage.setItem("gh_scores",JSON.stringify(arr));
-    } catch(e) {
-        console.error("Erreur lors de la sauvegarde du score:", e);
-    }
 }
 </script>
 </body>
