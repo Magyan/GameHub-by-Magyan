@@ -67,6 +67,10 @@ button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:poi
     margin-bottom: 20px;
 }
 </style>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase_config.js"></script>
+<script src="online_functions.js"></script>
 </head>
 <body>
 
@@ -103,7 +107,7 @@ button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:poi
 let GRID_DIMENSION = 4; 
 let TILE_SIZE_PX = 80;
 let INITIAL_RESPONSE_TIME_MS = 2000;
-let MIN_RESPONSE_TIME_MS = 500; // Le temps de réponse ne descendra pas en dessous de cette valeur
+let MIN_RESPONSE_TIME_MS = 500; 
 
 // --- Variables d'État du Jeu ---
 let order = [], playerOrder = [], score = 0, playing = false;
@@ -127,12 +131,11 @@ function setDifficulty(dim, size, time, minTime) {
     INITIAL_RESPONSE_TIME_MS = time;
     MIN_RESPONSE_TIME_MS = minTime;
 
-    createTiles(); // Recréer la grille
+    createTiles(); 
     
-    // Afficher le bouton Démarrer après la sélection de la difficulté
     startButton.style.display = 'inline-block';
     messageDisplay.innerText = `Difficulté ${dim}x${dim} sélectionnée. Prêt à jouer !`;
-    startButton.onclick = startGame; // Relier le bouton Démarrer à startGame
+    startButton.onclick = startGame; 
 }
 
 // Crée les tuiles initiales dans le DOM
@@ -150,7 +153,7 @@ function createTiles() {
       d.style.width = `${TILE_SIZE_PX}px`;
       d.style.height = `${TILE_SIZE_PX}px`;
       d.dataset.id = i;
-      d.textContent = i + 1; // Afficher le numéro de la tuile
+      d.textContent = i + 1; 
       d.onclick = () => pressTile(i);
       grid.appendChild(d);
       tiles.push(d);
@@ -170,9 +173,8 @@ function startGame(){
   
   scoreDisplay.innerText = 0;
   timerDisplay.style.display = 'block';
-  difficultySelector.style.display = 'none'; // Masquer le sélecteur
+  difficultySelector.style.display = 'none'; 
   
-  // Rétablir l'état visuel des tuiles
   tiles.forEach(t => t.classList.remove("correct-press", "error-press", "active"));
   
   nextRound();
@@ -203,7 +205,6 @@ function nextRound(){
     if(i >= order.length) {
       clearInterval(interval);
       
-      // Après la séquence, on passe en mode attente du joueur
       setTimeout(()=>{
           grid.classList.add("wait");
           messageDisplay.innerText = "À votre tour !";
@@ -217,13 +218,11 @@ function flash(id, isError = false){
   const t = tiles[id];
   
   if (isError) {
-      // Flash d'erreur
       t.classList.add("error-press");
       setTimeout(() => t.classList.remove("error-press"), 300);
       return;
   }
   
-  // Flash de séquence
   t.classList.add("active");
   setTimeout(() => t.classList.remove("active"), flashTime);
 }
@@ -231,32 +230,28 @@ function flash(id, isError = false){
 function pressTile(id){
   if(!playing || playerOrder.length === order.length || !grid.classList.contains("wait")) return;
   
-  stopResponseTimer(); // Arrêter le chronomètre pour ce clic
+  stopResponseTimer(); 
   
   playerOrder.push(id);
   const currentTurn = playerOrder.length - 1;
 
   if(playerOrder[currentTurn] !== order[currentTurn]) {
-    // Erreur de séquence
     flash(id, true);
     return gameOver("Séquence incorrecte");
   } else {
-    // Clic correct
+    
     const t = tiles[id];
     t.classList.add("correct-press");
     setTimeout(() => t.classList.remove("correct-press"), 200);
 
-    // 3. Séquence correcte et complète
     if(playerOrder.length === order.length){
       grid.classList.remove("wait");
       messageDisplay.innerText = "Réussi ! Nouvelle séquence...";
       score++;
       scoreDisplay.innerText = score;
       
-      // Attendre avant de passer au round suivant
       setTimeout(nextRound, 1000); 
     } else {
-      // 4. Séquence correcte mais incomplète : relancer le chronomètre
       startResponseTimer();
     }
   }
@@ -265,7 +260,6 @@ function pressTile(id){
 // --- Logique du Chronomètre de Réponse ---
 
 function startResponseTimer() {
-    // Calcul du temps limite pour le round actuel
     const timeLimitForRound = Math.max(MIN_RESPONSE_TIME_MS, INITIAL_RESPONSE_TIME_MS - (order.length * 50)); 
     timeRemaining = timeLimitForRound;
 
@@ -274,10 +268,8 @@ function startResponseTimer() {
     timerInterval = setInterval(() => {
         timeRemaining -= 100;
         
-        // Affichage du temps
         timerDisplay.textContent = `Temps restant : ${(timeRemaining / 1000).toFixed(1)}s`;
 
-        // Alerte visuelle
         if (timeRemaining <= 500) {
             timerDisplay.style.color = 'red';
         } else {
@@ -294,7 +286,7 @@ function startResponseTimer() {
 function stopResponseTimer() {
     if (timerInterval) {
         clearInterval(timerInterval);
-        timerDisplay.style.color = 'white'; // Retour à la couleur neutre
+        timerDisplay.style.color = 'white'; 
     }
 }
 
@@ -307,34 +299,23 @@ function gameOver(reason){
   timerDisplay.style.display = 'none';
   messageDisplay.innerText = `Jeu terminé. ${reason}. Score : ${score}`;
   
-  // Flash d'erreur sur toutes les tuiles
   tiles.forEach(t => t.classList.add("error-press"));
   setTimeout(() => {
       tiles.forEach(t => t.classList.remove("error-press"));
       alert(`Erreur ! ${reason}. Score final : ${score}`);
+      
+      // 📢 SAUVEGARDE EN LIGNE
       saveScore(score, "Jeu 3 — Mémoire");
+      
   }, 500);
   
-  // Afficher à nouveau le sélecteur et le bouton Démarrer
   difficultySelector.style.display = 'block';
   startButton.style.display = 'inline-block';
 }
 
-// Fonction de sauvegarde de score 
-function saveScore(score, game){
-  const name = localStorage.getItem("gh_player") || "Anonyme";
-  try {
-      const arr = JSON.parse(localStorage.getItem("gh_scores") || "[]");
-      arr.push({name, score, game});
-      localStorage.setItem("gh_scores", JSON.stringify(arr));
-  } catch(e) {
-      console.error("Erreur lors de la sauvegarde du score:", e);
-  }
-}
-
 // Initialisation au chargement
 document.addEventListener('DOMContentLoaded', () => {
-    // Crée la grille par défaut au chargement (4x4 facile)
+    // Initialise avec la difficulté facile par défaut
     setDifficulty(4, 80, 2000, 350); 
     timerDisplay.style.display = 'none';
     startButton.style.display = 'inline-block';
