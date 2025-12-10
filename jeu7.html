@@ -17,7 +17,6 @@ button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:poi
     display: grid;
     gap: 5px;
     padding: 5px;
-    /* Styles de grille ajustés par JS */
 }
 .tile {
     background: #00aaff;
@@ -30,7 +29,7 @@ button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:poi
     cursor: pointer;
     transition: transform 0.2s, background 0.1s;
     user-select: none;
-    font-size: 1.5em; /* Taille ajustée pour les grandes grilles */
+    font-size: 1.5em; 
 }
 .empty {
     background: transparent;
@@ -66,6 +65,10 @@ button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:poi
     font-size: 12px;
 }
 </style>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase_config.js"></script>
+<script src="online_functions.js"></script>
 </head>
 <body>
 
@@ -107,7 +110,7 @@ let score = 0;  // Nombre de coups
 let timer = 0; // Temps en secondes
 let timerInterval;
 let active = false;
-let GRID_SIZE = 3; // Par défaut: 3x3
+let GRID_SIZE = 3; 
 const TILE_COUNT = () => GRID_SIZE * GRID_SIZE; 
 const GAME_NAME = "Jeu 7 — Puzzle Taquin";
 
@@ -137,7 +140,7 @@ function selectDifficulty(size) {
     
     createTiles();
     statsDisplay.style.display = 'block';
-    document.getElementById("start").onclick = startGame; // Relier le bouton
+    document.getElementById("start").onclick = startGame; 
 }
 
 function startGame() {
@@ -161,8 +164,9 @@ function gameOver() {
     
     messageDisplay.textContent = `Bravo ! Résolu en ${formatTime(timer)} et ${score} coups.`;
     
-    // Le score est le temps en secondes, le nombre de coups est une métrique secondaire
-    saveScore(timer, score, `${GAME_NAME} (${GRID_SIZE}x${GRID_SIZE})`); 
+    // 📢 SAUVEGARDE EN LIGNE
+    // Le score est le temps en secondes, les coups sont passés en paramètre 'moves'
+    saveScore(timer, `${GAME_NAME} (${GRID_SIZE}x${GRID_SIZE})`, score); 
     
     alert(`Félicitations ! Puzzle résolu en ${formatTime(timer)} et ${score} coups.`);
 }
@@ -202,9 +206,7 @@ function createTiles() {
 }
 
 /**
- * Mélange les tuiles et garantit la solvabilité du puzzle.
- * Pour une grille NxN, le puzzle est solvable si le nombre d'inversions est pair.
- * Pour les grilles impaires (3x3, 5x5), seul le nombre d'inversions importe.
+ * Mélange les tuiles et garantit la solvabilité du puzzle (version simplifiée).
  */
 function shuffleTiles() {
     const total = TILE_COUNT();
@@ -214,7 +216,6 @@ function shuffleTiles() {
     let inversions;
     let solvable = false;
     
-    // Boucle tant que le mélange n'est pas solvable
     while (!solvable) {
         // Mélange (Fisher-Yates)
         for (let i = total - 1; i > 0; i--) {
@@ -223,9 +224,8 @@ function shuffleTiles() {
         }
         
         inversions = 0;
-        const flatTiles = tiles.filter(t => t !== 0); // Exclure la case vide
+        const flatTiles = tiles.filter(t => t !== 0); 
         
-        // Compte les inversions
         for (let i = 0; i < flatTiles.length; i++) {
             for (let j = i + 1; j < flatTiles.length; j++) {
                 if (flatTiles[i] > flatTiles[j]) {
@@ -234,16 +234,9 @@ function shuffleTiles() {
             }
         }
         
-        // Pour les grilles NxN où N est impair (3, 5), solvable si inversions est pair.
-        if (GRID_SIZE % 2 !== 0) {
-            solvable = (inversions % 2 === 0);
-        } else {
-             // Pour les grilles NxN où N est pair (non implémenté ici, car nécessite la position de la ligne vide)
-             // Pour simplifier, nous utilisons le mode impair pour toutes les grilles ici.
-             solvable = (inversions % 2 === 0);
-        }
-
-        // Si le mélange initial parfait est déjà solvable et qu'on ne veut pas de partie gagnée d'avance
+        // Puzzle résolvable si le nombre d'inversions est pair (pour les grilles impaires)
+        solvable = (inversions % 2 === 0);
+        
         if (inversions === 0 && total > 2) {
              solvable = false;
         }
@@ -279,13 +272,10 @@ function moveTile(index) {
     const emptyRow = Math.floor(emptyIndex / GRID_SIZE);
     const emptyCol = emptyIndex % GRID_SIZE;
 
-    // Vérifier si la tuile est adjacente à la case vide
     const isAdjacent = Math.abs(row - emptyRow) + Math.abs(col - emptyCol) === 1;
 
     if (isAdjacent) {
-        // Échange de la tuile et de la case vide (Animation rapide via CSS transition)
         
-        // Applique un style d'animation pour le déplacement
         const tileToMove = gameArea.children[index];
         const emptyTile = gameArea.children[emptyIndex];
         
@@ -299,7 +289,7 @@ function moveTile(index) {
         score++;
         scoreDisplay.textContent = score;
         
-        render(); // Rafraîchissement visuel après l'échange
+        render(); 
         
         if (checkWin()) {
             gameOver();
@@ -318,21 +308,6 @@ function checkWin() {
     return tiles[total - 1] === 0;
 }
 
-// --- Fonction de Sauvegarde de Score (avec temps et coups) ---
-function saveScore(time, moves, game){
-    const name = localStorage.getItem("gh_player") || "Anonyme";
-    try {
-        const arr = JSON.parse(localStorage.getItem("gh_scores") || "[]");
-        
-        // NOTE: Le score principal pour le classement est le temps (plus bas = mieux)
-        // Les coups sont stockés dans le champ score pour le taquin
-        arr.push({name, score: time, game, moves: moves}); 
-        
-        localStorage.setItem("gh_scores", JSON.stringify(arr));
-    } catch(e) {
-        console.error("Erreur lors de la sauvegarde du score:", e);
-    }
-}
 
 // Initialisation au chargement
 document.addEventListener('DOMContentLoaded', () => {
