@@ -77,6 +77,10 @@ button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:poi
     opacity: 0.3;
 }
 </style>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase_config.js"></script>
+<script src="online_functions.js"></script>
 </head>
 <body>
 
@@ -108,8 +112,8 @@ const GAME_WIDTH = 600;
 const GAME_HEIGHT = 400;
 const PLAYER_SIZE = 40;
 const INITIAL_MAX_LIVES = 3;
-const PLAYER_MOVE_SPEED = 5; // Vitesse par frame
-const COLLISION_GRACE_PERIOD_MS = 1000; // ms d'invulnérabilité
+const PLAYER_MOVE_SPEED = 5; 
+const COLLISION_GRACE_PERIOD_MS = 1000; 
 const MAX_BOTTOM = GAME_HEIGHT - PLAYER_SIZE;
 
 // --- Paramètres de Difficulté par Palier ---
@@ -127,7 +131,7 @@ let lives = INITIAL_MAX_LIVES;
 let active = false;
 let obstacles = [];
 let gameLoopId; 
-let lastSpawnTime = 0; // Timestamp du dernier obstacle créé
+let lastSpawnTime = 0; 
 let isInvincible = false;
 let currentLevel = DIFFICULTY_LEVELS[0];
 
@@ -146,7 +150,7 @@ const livesContainer = document.getElementById("livesContainer");
 document.addEventListener("keydown", e => {
     if (e.key === "ArrowUp") moveUp = true;
     if (e.key === "ArrowDown") moveDown = true;
-    if (!active && (e.key === "ArrowUp" || e.key === "ArrowDown")) start(); // Démarre au premier mouvement
+    if (!active && (e.key === "ArrowUp" || e.key === "ArrowDown")) start();
 });
 
 document.addEventListener("keyup", e => {
@@ -161,7 +165,7 @@ area.addEventListener('mouseup', handlePointerUp);
 
 function handlePointerDown(e) {
     e.preventDefault();
-    if (!active) start(); // Démarre au premier clic/toucher
+    if (!active) start(); 
     if (!active) return;
     
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -185,14 +189,14 @@ function handlePointerUp() {
 // --- Démarrage du Jeu ---
 function start(){
     if (gameLoopId) cancelAnimationFrame(gameLoopId);
-    if (active) return; // Empêche de redémarrer si déjà actif
+    if (active) return; 
 
     score = 0; 
     lives = INITIAL_MAX_LIVES;
     active = true;
     isInvincible = false;
     currentLevel = DIFFICULTY_LEVELS[0];
-    lastSpawnTime = performance.now(); // Utiliser performance.now() pour le temps RAF
+    lastSpawnTime = performance.now(); 
     
     playerY = (GAME_HEIGHT / 2 - PLAYER_SIZE / 2);
     player.style.top = playerY + "px";
@@ -205,17 +209,14 @@ function start(){
     updateLifeDisplay();
     scoreDisplay.textContent = 0;
     
-    gameLoop(performance.now()); // Démarrage de la boucle RAF
+    gameLoop(performance.now()); 
 }
 
 // --- Boucle de Jeu (RAF) ---
 function gameLoop(timestamp) {
-    if (!active) {
-        // La fonction gameLoop ne devrait plus être appelée si !active
-        return; 
-    }
+    if (!active) return; 
 
-    const deltaTime = (timestamp - (gameLoop.lastTime || timestamp)) / 1000; // DeltaTime en secondes
+    const deltaTime = (timestamp - (gameLoop.lastTime || timestamp)) / 1000; 
     gameLoop.lastTime = timestamp;
 
     updatePlayerPosition();
@@ -244,7 +245,6 @@ function updateDifficulty() {
     const nextLevel = DIFFICULTY_LEVELS.find(l => l.score > currentLevel.score && score >= l.score);
     if (nextLevel) {
         currentLevel = nextLevel;
-        console.log(`Niveau atteint: ${currentLevel.score}. Nouvelle vitesse: ${currentLevel.baseSpeed}`);
     }
 }
 
@@ -252,7 +252,6 @@ function updateDifficulty() {
 // --- Logique des Obstacles et de Collision ---
 
 function spawnObstacleLogic(timestamp) {
-    // CORRECTION : Utiliser le timestamp pour gérer la fréquence de spawn
     if (timestamp - lastSpawnTime > currentLevel.spawnRateMs) { 
         
         const isFast = currentLevel.enableFast && Math.random() > 0.7;
@@ -270,7 +269,6 @@ function createObstacleData(isFast = false) {
     const size = isFast ? 25 : PLAYER_SIZE;
     const typeClass = isFast ? 'type-fast' : 'type-normal';
     
-    // La vitesse est maintenant gérée par le deltaTime dans updateObstacles, donc on stocke baseSpeed
     const baseSpeed = isFast ? currentLevel.baseSpeed * 1.5 : currentLevel.baseSpeed;
     
     const o = document.createElement("div");
@@ -297,9 +295,8 @@ function updateObstacles(deltaTime) {
     for (let i = obstacles.length - 1; i >= 0; i--) {
         const o = obstacles[i];
         
-        // CORRECTION: Mouvement basé sur le deltaTime (plus stable)
-        // La vitesse en pixels par frame est baseSpeed * (deltaTime / (1/60s))
-        o.x -= o.baseSpeed * 60 * deltaTime; // Approximation si la baseSpeed était pour du 60FPS
+        // Mouvement basé sur le deltaTime (baseSpeed * 60 * deltaTime)
+        o.x -= o.baseSpeed * 60 * deltaTime; 
         o.element.style.left = o.x + "px";
 
         // 1. Détection de collision (utilise les positions numériques)
@@ -373,25 +370,13 @@ function gameOver(){
     
     if (gameLoopId) cancelAnimationFrame(gameLoopId);
     
-    // S'assurer que le timeout d'invincibilité est clair
     player.classList.remove('blinking');
     
     obstacles.forEach(o => o.element.remove());
     
+    // 📢 SAUVEGARDE EN LIGNE
     saveScore(score, "Jeu 2 — Évitement");
     alert("GAME OVER ! Score final : " + score);
-}
-
-// --- Fonction de Sauvegarde de Score ---
-function saveScore(score, game){
-    const name = localStorage.getItem("gh_player") || "Anonyme";
-    try {
-        const arr = JSON.parse(localStorage.getItem("gh_scores") || "[]");
-        arr.push({name, score, game});
-        localStorage.setItem("gh_scores", JSON.stringify(arr));
-    } catch(e) {
-        console.error("Erreur lors de la sauvegarde du score:", e);
-    }
 }
 
 // Initialisation au chargement
@@ -400,9 +385,6 @@ document.addEventListener('DOMContentLoaded', () => {
     player.style.top = playerY + "px";
     player.style.left = "20px";
     updateLifeDisplay();
-    
-    // Le jeu est initialisé mais inactif, prêt à être démarré
-    document.getElementById("start").onclick = start;
 });
 </script>
 </body>
