@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jeu 8 - Clicker ULTIME</title>
+<style>
+body { margin:0; font-family:Arial,Helvetica,sans-serif; background:#0f1724; color:#fff; text-align:center; }
+button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:pointer; font-weight:bold; }
+#start { background:#00ff66; }
+#back { background:#ff8c00; }
+#prestigeBtn { background: #8a2be2; color: white; margin-top: 20px; }
+#prestigeStats { color: #8a2be2; font-weight: bold; }
+
+#gameContainer {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    max-width: 900px;
+    margin: 20px auto;
+}
+.main-clicker {
+    width: 200px;
+    height: 200px;
+    background: #ff8c00;
+    border-radius: 50%;
+    margin: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 4em;
+    cursor: pointer;
+    box-shadow: 0 10px 20px rgba(255, 140, 0, 0.4);
+    transition: transform 0.1s;
+    position: relative; 
+    overflow: hidden;
+}
+.main-clicker:active {
+    transform: scale(0.95);
+}
+#boostsSummary {
+    background: #1a2430;
+    padding: 15px;
+    border-radius: 8px;
+    width: 250px;
+    margin: 30px;
+    text-align: left;
+}
+#boostsSummary h3 {
+    text-align: center;
+    color: #00ff66;
+    margin-top: 0;
+}
+.upgrades-container {
+    max-width: 900px; 
+    margin: 20px auto;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 15px;
+}
+.upgrade-card {
+    background: #1a2430;
+    padding: 15px;
+    border-radius: 8px;
+    width: 200px;
+    text-align: left;
+}
+.purchase-options {
+    display: flex;
+    gap: 5px;
+    margin-top: 5px;
+}
+.purchase-options button {
+    padding: 6px 10px;
+    margin: 0;
+    font-size: 0.8em;
+    width: 25%; 
+    background: #00aaff;
+    color: white;
+}
+.upgrade-card button.main-buy-btn {
+    width: 100%;
+    background: #00aaff;
+    color: white;
+}
+.upgrade-card button:disabled {
+    background: #444;
+    cursor: not-allowed;
+}
+/* Style pour l'effet visuel de clic */
+.click-effect {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 1;
+    font-size: 1.5em;
+    color: #fff;
+    pointer-events: none;
+    animation: fade-out 0.8s ease-out forwards;
+    z-index: 10;
+}
+.critical-effect {
+    color: #ff0000;
+    font-weight: bold;
+    font-size: 2em;
+    text-shadow: 0 0 10px #ff0000;
+}
+@keyframes fade-out {
+    0% { transform: translate(-50%, 0); opacity: 1; }
+    100% { transform: translate(-50%, -100px); opacity: 0; }
+}
+.achievement-list {
+    text-align: left;
+    max-width: 600px;
+    margin: 20px auto;
+    padding: 10px;
+    background: #1a2430;
+    border-radius: 8px;
+}
+.achievement-item {
+    padding: 5px 0;
+    border-bottom: 1px dashed #333;
+}
+.achievement-item:last-child {
+    border-bottom: none;
+}
+.unlocked {
+    color: #00ff66;
+    font-weight: bold;
+}
+.locked {
+    color: #ccc;
+    font-style: italic;
+}
+/* Style pour la notification de succès */
+#notification {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: #00ff66;
+    color: black;
+    padding: 15px;
+    border-radius: 5px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    transition: opacity 0.5s, transform 0.5s;
+    transform: translateX(100%);
+    z-index: 1000;
+}
+.show-notification {
+    opacity: 1 !important;
+    transform: translateX(0) !important;
+}
+</style>
+</head>
+<body>
+
+<h1>Jeu 8 — Production de Ressources</h1>
+
+<button id="start">Démarrer/Nouvelle Partie</button>
+<button id="back" onclick="location.href='index.html'">Retour</button>
+<button id="prestigeBtn" style="display:none;" onclick="handlePrestige()">Activer le Prestige (x<span id="prestigeMultiplier"></span>)</button>
+
+
+<div id="instructions">
+    <h3>Statistiques de Jeu</h3>
+    <p>Multiplicateur Permanent de Prestige : <strong id="prestigeStats">x1</strong></p>
+    <p class="small">Dernière sauvegarde locale : <span id="lastSaveTime">Jamais</span></p>
+    <p class="small">Multiplicateur de Succès : <strong id="achievementMultStats">x1</strong></p>
+    <ul>
+        <li><strong>Objectif :</strong> Atteindre <strong style="color:red;">100,000</strong> ressources pour débloquer le Prestige.</li>
+    </ul>
+</div>
+
+<h2>Total Ressources : <span id="resources">0</span></h2>
+<h3>Production/seconde : <span id="resourcesPerSecond">0.0</span></h3>
+
+<div id="gameContainer">
+    
+    <div id="boostsSummary">
+        <h3>Votre Moteur</h3>
+        <p>Gain par clic: <strong id="summaryClickValue">1</strong></p>
+        <p>Chance Critique: <strong>5% (x10)</strong></p>
+        <p>Multiplicateur Clic: <strong id="summaryClickMult">x1.00</strong></p>
+        <p>Multiplicateur Auto: <strong id="summaryAutoMult">x1.00</strong></p>
+        <hr style="border-color:#444">
+        <div id="summaryItems">
+            Rien à afficher.
+        </div>
+    </div>
+
+    <div id="mainClicker" class="main-clicker">💰</div>
+
+</div>
+
+<div class="achievement-list">
+    <h3>🏅 Succès Débloqués</h3>
+    <div id="achievementsContainer"></div>
+</div>
+
+<div id="upgradesContainer" class="upgrades-container">
+    </div>
+
+<div id="notification"></div>
+
+<script>
+// --- CONSTANTES GLOBALES ---
+const FPS = 60; 
+const MS_PER_FRAME = 1000 / FPS;
+const CRITICAL_CHANCE = 0.05;
+const CRITICAL_MULTIPLIER = 10;
+const PRESTIGE_COST = 100000; 
+const SAVE_KEY = 'gh_clicker_save';
+const GAME_NAME = "Jeu 8 — Clicker";
+const MAX_OFFLINE_TIME_SECONDS = 48 * 3600; 
+
+// --- STRUCTURE D'ACHATS ---
+const INITIAL_UPGRADES = [
+    { id: 'click1', type: 'click', name: "Doigts Entraînés", baseCost: 10, baseEffect: 1, costFactor: 1.5, tiers: [5, 15], text: "+1 par clic", count: 0 },
+    { id: 'auto1', type: 'auto', name: "Ouvrier (x0.5 RPS)", baseCost: 50, baseEffect: 0.5, costFactor: 1.5, tiers: [5, 15], text: "+0.5/sec", count: 0 },
+    { id: 'auto2', type: 'auto', name: "Usine Simple (x5 RPS)", baseCost: 500, baseEffect: 5, costFactor: 1.55, tiers: [5, 15], text: "+5/sec", count: 0 },
+    { id: 'static1', type: 'auto', name: "Travail à Temps Partiel", baseCost: 200, baseEffect: 1, costFactor: 2, tiers: [1], text: "+1/sec (Statique)", count: 0 },
+    { id: 'mult_click_1', type: 'multiplier_click', name: "Gants de Précision", baseCost: 1000, baseEffect: 0.25, costFactor: 3, tiers: [1], text: "+25% Clic", count: 0 },
+    { id: 'mult_auto_1', type: 'multiplier_auto', name: "Optimisation Logistique", baseCost: 5000, baseEffect: 0.10, costFactor: 3, tiers: [1, 5], text: "+10% Auto", count: 0 },
+    { id: 'mult_global_1', type: 'multiplier_global', name: "Marketing", baseCost: 20000, baseEffect: 0.05, costFactor: 4, tiers: [1], text: "+5% Général", count: 0 },
+];
+
+// --- SYSTÈME DE SUCCÈS (NOUVEAU) ---
+const ACHIEVEMENTS = [
+    { id: 'res1k', name: 'Débutant', condition: (g) => g.resources >= 1000, rewardMult: 0.005, unlocked: false }, 
+    { id: 'res10k', name: 'Producteur', condition: (g) => g.resources >= 10000, rewardMult: 0.01, unlocked: false }, 
+    { id: 'rps10', name: 'Lancement Auto', condition: (g) => calculateActualRPS(g) >= 10, rewardMult: 0.005, unlocked: false },
+    { id: 'click100', name: 'Dizaine de Clics', condition: (g) => g.totalClicks >= 100, rewardMult: 0.005, unlocked: false },
+    { id: 'x5auto', name: 'Mini-Empire', condition: (g) => g.upgrades.find(u => u.id === 'auto2' || u.id === 'static1')?.count >= 5, rewardMult: 0.015, unlocked: false },
+];
+
+// --- ÉTAT GLOBAL DU JEU ---
+let gameState = {
+    resources: 0,
+    clickValue: 1,
+    autoProduction: 0,
+    clickMultiplier: 1.0,
+    autoMultiplier: 1.0,
+    upgrades: [],
+    prestigePoints: 0,
+    // Multiplicateur Prestige ECHELONNÉ (Ex: 10 PP = x1.10; 100 PP = x2.00)
+    prestigeMultiplier: 1.0, 
+    achievementMultiplier: 1.0, 
+    lastSaveTimestamp: Date.now(),
+    totalClicks: 0,
+    achievements: ACHIEVEMENTS.map(a => ({ id: a.id, unlocked: false })),
+};
+
+let loop;
+let saveLoop;
+
+// --- DOM ELEMENTS ---
+const resourcesDisplay = document.getElementById("resources");
+const rpsDisplay = document.getElementById("resourcesPerSecond");
+const achievementMultStats = document.getElementById("achievementMultStats");
+const lastSaveTime = document.getElementById("lastSaveTime");
+const upgradesContainer = document.getElementById("upgradesContainer");
+const achievementsContainer = document.getElementById("achievementsContainer");
+const notificationElement = document.getElementById("notification");
+
+
+document.getElementById("start").onclick = startGame;
+document.getElementById("mainClicker").onclick = clickResource;
+
+// --- CALCULS CLÉS ---
+
+function calculateActualRPS(state = gameState) {
+    return state.autoProduction * state.autoMultiplier * state.prestigeMultiplier * state.achievementMultiplier * state.clickMultiplier;
+}
+
+function calculateActualClickValue(state = gameState) {
+    return state.clickValue * state.clickMultiplier * state.autoMultiplier * state.prestigeMultiplier * state.achievementMultiplier;
+}
+
+// --- CORE GAME LOGIC ---
+
+function startGame(isNewGame = true) {
+    if (loop) clearInterval(loop);
+    if (saveLoop) clearInterval(loop);
+    
+    if (isNewGame) {
+        gameState.resources = 0;
+        gameState.clickValue = 1;
+        gameState.autoProduction = 0;
+        gameState.clickMultiplier = 1.0;
+        gameState.autoMultiplier = 1.0;
+        gameState.totalClicks = 0;
+        gameState.upgrades = INITIAL_UPGRADES.map(u => ({ ...u, count: 0, currentCost: u.baseCost }));
+        gameState.achievements = ACHIEVEMENTS.map(a => ({ id: a.id, unlocked: false }));
+        gameState.achievementMultiplier = 1.0;
+    } 
+    
+    recalculateGameValues();
+    renderUpgrades();
+    renderBoostsSummary();
+    updateDisplay();
+    updatePrestigeUI();
+    renderAchievements();
+
+    loop = setInterval(updateAutoProduction, MS_PER_FRAME); 
+    saveLoop = setInterval(saveGame, 5000); 
+}
+
+function updateAutoProduction() {
+    const actualRPS = calculateActualRPS();
+    const gainPerFrame = actualRPS / FPS; 
+    
+    gameState.resources += gainPerFrame;
+    
+    checkAchievements();
+    updateDisplay();
+    updatePrestigeUI(); 
+}
+
+function clickResource() {
+    let gain = calculateActualClickValue();
+    let isCritical = false;
+
+    if (Math.random() < CRITICAL_CHANCE) {
+        gain *= CRITICAL_MULTIPLIER;
+        isCritical = true;
+    }
+
+    gameState.resources += gain;
+    gameState.totalClicks += 1;
+    
+    showClickEffect(gain, isCritical);
+    checkAchievements();
+    updateDisplay();
+}
+
+/**
+ * Logique d'achat unique pour un upgrade donné.
+ */
+function purchaseSingleUpgrade(upgrade) {
+    if (gameState.resources < upgrade.currentCost) return false;
+
+    gameState.resources -= upgrade.currentCost;
+    
+    const effectApplied = upgrade.baseEffect * getTierMultiplier(upgrade.count + 1, upgrade.tiers);
+
+    if (upgrade.type === 'click') {
+        gameState.clickValue += effectApplied;
+    } else if (upgrade.type === 'auto') {
+        gameState.autoProduction += effectApplied;
+    } else if (upgrade.type === 'multiplier_click') {
+        gameState.clickMultiplier += effectApplied;
+    } else if (upgrade.type === 'multiplier_auto') {
+        gameState.autoMultiplier += effectApplied;
+    } else if (upgrade.type === 'multiplier_global') {
+        gameState.clickMultiplier += effectApplied;
+        gameState.autoMultiplier += effectApplied;
+    }
+    
+    upgrade.count++;
+    upgrade.currentCost = Math.ceil(upgrade.baseCost * Math.pow(upgrade.costFactor, upgrade.count)); 
+
+    return true;
+}
+
+/**
+ * Gère l'achat multiple (x1, x10, x100, Max)
+ */
+function handlePurchase(upgradeId, amount) {
+    const upgrade = gameState.upgrades.find(u => u.id === upgradeId);
+    if (!upgrade) return;
+
+    let purchasedCount = 0;
+
+    if (amount === 'Max') {
+        let maxBuy = getBulkAmount(upgrade);
+        for(let i = 0; i < maxBuy; i++) {
+            if(purchaseSingleUpgrade(upgrade)) {
+                purchasedCount++;
+            } else {
+                break;
+            }
+        }
+    } else {
+        const targetAmount = amount;
+        for(let i = 0; i < targetAmount; i++) {
+            if(purchaseSingleUpgrade(upgrade)) {
+                purchasedCount++;
+            } else {
+                break; 
+            }
+        }
+    }
+
+    if (purchasedCount > 0) {
+        recalculateGameValues(); 
+        renderUpgrades();
+        renderBoostsSummary();
+        checkAchievements();
+        saveGame();
+    }
+}
+
+function getTierMultiplier(count, tiers) {
+    if (!tiers || tiers.length === 0) return 1;
+    let multiplier = 1;
+    for (let i = 0; i < tiers.length; i++) {
+        if (count >= tiers[i]) {
+            multiplier += 1;
+        }
+    }
+    return multiplier;
+}
+
+function getBulkCost(upgrade, n) {
+    let totalCost = 0;
+    let currentCost = upgrade.currentCost;
+    let currentCount = upgrade.count;
+
+    for (let i = 0; i < n; i++) {
+        totalCost += currentCost;
+        currentCount++;
+        currentCost = Math.ceil(upgrade.baseCost * Math.pow(upgrade.costFactor, currentCount));
+    }
+    return totalCost;
+}
+
+function getBulkAmount(upgrade) {
+    let amount = 0;
+    let resourcesLeft = gameState.resources;
+    let currentCost = upgrade.currentCost;
+    let currentCount = upgrade.count;
+
+    while (resourcesLeft >= currentCost) {
+        resourcesLeft -= currentCost;
+        amount++;
+        currentCount++;
+        currentCost = Math.ceil(upgrade.baseCost * Math.pow(upgrade.costFactor, currentCount));
+    }
+    return amount;
+}
+
+// --- SYSTÈME DE SUCCÈS (ACHIEVEMENTS) ---
+
+function checkAchievements() {
+    let globalMult = 1.0;
+    
+    ACHIEVEMENTS.forEach(achDef => {
+        const currentStatus = gameState.achievements.find(a => a.id === achDef.id);
+        
+        if (!currentStatus.unlocked && achDef.condition(gameState)) {
+            currentStatus.unlocked = true;
+            // NOUVEAU: Affichage de notification
+            showNotification(`🏅 Succès débloqué : ${achDef.name} !`, achDef.rewardMult);
+        }
+        
+        if (currentStatus.unlocked) {
+            globalMult += achDef.rewardMult;
+        }
+    });
+
+    if (gameState.achievementMultiplier !== globalMult) {
+        gameState.achievementMultiplier = globalMult;
+        renderAchievements();
+        recalculateGameValues();
+    }
+}
+
+function renderAchievements() {
+    achievementsContainer.innerHTML = '';
+    
+    ACHIEVEMENTS.forEach(achDef => {
+        const status = gameState.achievements.find(a => a.id === achDef.id).unlocked;
+        const item = document.createElement('div');
+        item.classList.add('achievement-item', status ? 'unlocked' : 'locked');
+        
+        const rewardText = `(+${(achDef.rewardMult * 100).toFixed(1)}% Global)`;
+        const statusText = status ? '✅ Débloqué' : '❌ Verrouillé';
+        
+        item.innerHTML = `<strong>${achDef.name}</strong> ${rewardText} <span style="float:right;">${statusText}</span>`;
+        achievementsContainer.appendChild(item);
+    });
+
+    achievementMultStats.textContent = `x${gameState.achievementMultiplier.toFixed(3)}`;
+}
+
+/**
+ * Affiche une notification temporaire pour les succès.
+ */
+function showNotification(message, reward) {
+    notificationElement.innerHTML = `${message} <br> (Multiplicateur amélioré)`;
+    notificationElement.classList.add('show-notification');
+    
+    setTimeout(() => {
+        notificationElement.classList.remove('show-notification');
+    }, 4000);
+}
+
+
+// --- PRESTIGE LOGIC ---
+
+function handlePrestige() {
+    if (gameState.resources >= PRESTIGE_COST) {
+        const pointsGained = Math.floor(Math.sqrt(gameState.resources / PRESTIGE_COST));
+        
+        if (confirm(`Vous allez réinitialiser votre progression pour gagner ${pointsGained} points de Prestige. Continuer?`)) {
+            gameState.prestigePoints += pointsGained;
+            // NOUVEAU: Multiplicateur Prestige ÉCHELONNÉ (Puissance exponentielle)
+            // Chaque point donne 1% du total, rendant le gain plus grand
+            gameState.prestigeMultiplier = 1.0 + (gameState.prestigePoints * 0.01); 
+            
+            startGame(true); 
+            alert(`Prestige activé ! Multiplicateur actuel: x${gameState.prestigeMultiplier.toFixed(2)}`);
+        }
+    }
+}
+
+
+// --- AFFICHAGE ET PERSISTENCE ---
+
+function formatNumber(num) {
+    if (num < 10000) return Math.floor(num).toLocaleString('fr-FR');
+    
+    const units = ['', 'K', 'M', 'B', 'T', 'Q'];
+    const floor = Math.floor(Math.log(num) / Math.log(1000));
+    const power = Math.pow(1000, floor);
+    const value = (num / power).toFixed(2);
+
+    return value + units[floor];
+}
+
+
+function updatePrestigeUI() {
+    const isReady = gameState.resources >= PRESTIGE_COST;
+    const pointsGained = Math.floor(Math.sqrt(gameState.resources / PRESTIGE_COST));
+    
+    prestigeStats.textContent = `x${gameState.prestigeMultiplier.toFixed(2)}`;
+    
+    if (isReady) {
+        prestigeBtn.style.display = 'block';
+        document.getElementById('prestigeMultiplier').textContent = pointsGained;
+    } else {
+        prestigeBtn.style.display = 'none';
+    }
+}
+
+function updateDisplay() {
+    const actualRPS = calculateActualRPS();
+    
+    resourcesDisplay.textContent = formatNumber(gameState.resources); 
+    rpsDisplay.textContent = formatNumber(actualRPS);
+    
+    // Mise à jour de l'état des boutons
+    gameState.upgrades.forEach(upgrade => {
+        const btn = document.getElementById(`btn-${upgrade.id}`);
+        const btn10 = document.getElementById(`btn-${upgrade.id}-10`);
+        const btn100 = document.getElementById(`btn-${upgrade.id}-100`);
+        const btnMax = document.getElementById(`btn-${upgrade.id}-Max`);
+        
+        // Mettre à jour l'affichage des coûts Max et x10/x100
+        if (btn10) btn10.textContent = `x10 (${formatNumber(getBulkCost(upgrade, 10))})`;
+        if (btn100) btn100.textContent = `x100 (${formatNumber(getBulkCost(upgrade, 100))})`;
+        
+        const maxAmount = getBulkAmount(upgrade);
+        if (btnMax) btnMax.textContent = `Max (${maxAmount})`;
+
+
+        if (btn) btn.disabled = gameState.resources < upgrade.currentCost;
+        if (btn10) btn10.disabled = gameState.resources < getBulkCost(upgrade, 10);
+        if (btn100) btn100.disabled = gameState.resources < getBulkCost(upgrade, 100);
+        if (btnMax) btnMax.disabled = maxAmount === 0; // Désactiver si Max est 0 ou 1
+    });
+}
+
+function renderUpgrades() {
+    upgradesContainer.innerHTML = '';
+    
+    gameState.upgrades.forEach(u => {
+        let effectText = u.text;
+        if (u.type.includes('multiplier')) {
+            const nextMult = u.baseEffect * getTierMultiplier(u.count + 1, u.tiers);
+            effectText = u.text.replace(u.baseEffect, (nextMult * 100).toFixed(0) + '%');
+        } else if (u.type.includes('click') || u.type.includes('auto')) {
+            const nextProd = u.baseEffect * getTierMultiplier(u.count + 1, u.tiers);
+            // NOUVEAU: Affichage décimal pour le clic de base
+            const formatDecimal = u.type === 'click' ? 2 : (u.baseEffect < 1 ? 1 : 0);
+            effectText = u.text.replace(u.baseEffect, nextProd.toFixed(formatDecimal));
+        }
+        
+        const costFormatted = formatNumber(u.currentCost);
+        
+        const card = document.createElement("div");
+        card.classList.add("upgrade-card");
+        
+        card.innerHTML = `
+            <h3>${u.name} <span style="float:right; font-size:0.8em; color:#ff8c00;">x${u.count}</span></h3>
+            <p style="color:#00ff66;">Effet: ${effectText}</p>
+            <p>Coût suivant: ${costFormatted}</p>
+            
+            <div class="purchase-options">
+                <button class="main-buy-btn" id="btn-${u.id}" onclick="handlePurchase('${u.id}', 1)">x1</button>
+                <button id="btn-${u.id}-10" onclick="handlePurchase('${u.id}', 10)">x10</button>
+                <button id="btn-${u.id}-100" onclick="handlePurchase('${u.id}', 100)">x100</button>
+                <button id="btn-${u.id}-Max" onclick="handlePurchase('${u.id}', 'Max')">Max</button>
+            </div>
+        `;
+        upgradesContainer.appendChild(card);
+    });
+    
+    updateDisplay();
+}
+
+function renderBoostsSummary() {
+    summaryClickValue.textContent = calculateActualClickValue().toFixed(2); // 2 décimales pour les clics
+    summaryClickMult.textContent = `x${(gameState.clickMultiplier).toFixed(2)}`;
+    summaryAutoMult.textContent = `x${(gameState.autoMultiplier).toFixed(2)}`;
+    
+    let html = '';
+    const purchasedItems = gameState.upgrades.filter(u => u.count > 0);
+    
+    if (purchasedItems.length > 0) {
+        html += '<p>Améliorations Achetées:</p><ul>';
+        purchasedItems.forEach(u => {
+            html += `<li>${u.name}: x${u.count}</li>`;
+        });
+        html += '</ul>';
+    } else {
+        html += '<p>Aucune amélioration achetée.</p>';
+    }
+    
+    summaryItems.innerHTML = html;
+}
+
+function showClickEffect(amount, isCritical) {
+    const effect = document.createElement('div');
+    effect.textContent = `+${formatNumber(amount)}`;
+    effect.classList.add('click-effect');
+    
+    const xOffset = Math.random() * 20 - 10;
+    const yOffset = Math.random() * 20 - 10;
+    effect.style.left = `calc(50% + ${xOffset}px)`;
+    effect.style.top = `calc(50% + ${yOffset}px)`;
+    
+    if (isCritical) {
+        effect.textContent = `CRITIQUE! +${formatNumber(amount)}`;
+        effect.classList.add('critical-effect');
+    }
+
+    document.getElementById("mainClicker").appendChild(effect);
+    setTimeout(() => { effect.remove(); }, 800);
+}
+
+// --- PERSISTENCE (Sauvegarde/Chargement) ---
+
+function saveGame() {
+    try {
+        const now = new Date();
+        gameState.lastSaveTimestamp = Date.now();
+        const saveObject = {
+            ...gameState,
+            lastSave: now.toLocaleTimeString('fr-FR')
+        };
+        localStorage.setItem(SAVE_KEY, JSON.stringify(saveObject));
+        lastSaveTime.textContent = now.toLocaleTimeString('fr-FR');
+        
+        saveScore(Math.floor(gameState.resources), GAME_NAME); 
+    } catch (e) {
+        console.error("Erreur de sauvegarde:", e);
+    }
+}
+
+function loadGame() {
+    try {
+        const savedState = localStorage.getItem(SAVE_KEY);
+        if (savedState) {
+            const loadedState = JSON.parse(savedState);
+            
+            gameState = { ...gameState, ...loadedState }; 
+            
+            const loadedUpgradesMap = new Map(loadedState.upgrades.map(u => [u.id, u]));
+            gameState.upgrades = INITIAL_UPGRADES.map(initialU => {
+                const loadedU = loadedUpgradesMap.get(initialU.id);
+                return loadedU ? { ...initialU, ...loadedU } : { ...initialU, count: 0, currentCost: initialU.baseCost };
+            });
+            
+            const loadedAchievementsMap = new Map((loadedState.achievements || []).map(a => [a.id, a]));
+            gameState.achievements = ACHIEVEMENTS.map(initialA => {
+                const loadedA = loadedAchievementsMap.get(initialA.id);
+                return { id: initialA.id, unlocked: loadedA ? loadedA.unlocked : false };
+            });
+
+            // GESTION DU GAIN HORS LIGNE
+            const currentTime = Date.now();
+            const timePassedMs = currentTime - gameState.lastSaveTimestamp;
+            const timePassedSec = Math.min(timePassedMs / 1000, MAX_OFFLINE_TIME_SECONDS);
+            
+            if (timePassedSec > 10) { 
+                recalculateGameValues(loadedState); 
+                const actualRPS_at_load = calculateActualRPS(loadedState);
+
+                const offlineGain = actualRPS_at_load * timePassedSec;
+
+                if (offlineGain > 0) {
+                    gameState.resources += offlineGain;
+                    alert(`Bienvenue ! Vous avez été absent pendant ${formatTime(timePassedSec)}. Vous avez gagné ${formatNumber(offlineGain)} ressources.`);
+                }
+            }
+
+            if (loadedState.lastSave) {
+                 lastSaveTime.textContent = loadedState.lastSave;
+            }
+            return true;
+        }
+    } catch (e) {
+        console.error("Erreur de chargement:", e);
+        localStorage.removeItem(SAVE_KEY);
+    }
+    return false;
+}
+
+function recalculateGameValues(state = gameState) {
+    state.clickValue = 1;
+    state.autoProduction = 0;
+    state.clickMultiplier = 1.0;
+    state.autoMultiplier = 1.0;
+
+    let totalAchievementMult = 1.0;
+    ACHIEVEMENTS.forEach(achDef => {
+        const isUnlocked = state.achievements.find(a => a.id === achDef.id)?.unlocked;
+        if (isUnlocked) {
+             totalAchievementMult += achDef.rewardMult;
+        }
+    });
+    state.achievementMultiplier = totalAchievementMult;
+
+    state.upgrades.forEach(u => {
+        if (u.count > 0) {
+            let totalEffect = 0;
+            for(let i = 1; i <= u.count; i++) {
+                const effectApplied = u.baseEffect * getTierMultiplier(i, u.tiers);
+                totalEffect += effectApplied;
+            }
+
+            if (u.type === 'click') {
+                state.clickValue += totalEffect;
+            } else if (u.type === 'auto') {
+                state.autoProduction += totalEffect;
+            } else if (u.type === 'multiplier_click') {
+                state.clickMultiplier += totalEffect;
+            } else if (u.type === 'multiplier_auto') {
+                state.autoMultiplier += totalEffect;
+            } else if (u.type === 'multiplier_global') {
+                state.clickMultiplier += totalEffect;
+                state.autoMultiplier += totalEffect;
+            }
+        }
+    });
+}
+
+function formatTime(seconds) {
+    if (seconds < 60) return `${Math.floor(seconds)} secondes`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)} heures`;
+    return `${Math.floor(seconds / 86400)} jours`;
+}
+
+function saveScore(score, game){
+    const name = localStorage.getItem("gh_player") || "Anonyme";
+    try {
+        const arr = JSON.parse(localStorage.getItem("gh_scores") || "[]");
+        arr.push({name, score, game}); 
+        localStorage.setItem("gh_scores", JSON.stringify(arr));
+    } catch(e) {
+        console.error("Erreur lors de la sauvegarde du score:", e);
+    }
+}
+
+// --- DÉMARRAGE DU JEU ---
+document.addEventListener('DOMContentLoaded', () => {
+    if (loadGame()) {
+        startGame(false); 
+    } else {
+        startGame(true); 
+    }
+});
+</script>
+</body>
+</html>

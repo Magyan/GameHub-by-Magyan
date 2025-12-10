@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>GameHub - Accueil (final)</title>
+<style>
+  body { margin:0; font-family:Arial,Helvetica,sans-serif; background:#0f1724; color:#fff; text-align:center; }
+  .wrap{max-width:900px;margin:28px auto;padding:20px;}
+  .card{background:#111;padding:18px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.6); margin-bottom:18px;}
+  input{padding:10px 12px;border-radius:8px;border:1px solid #333;width:70%;max-width:320px}
+  /* Style des boutons génériques */
+  button, .menu-link {
+    padding:10px 16px;
+    border-radius:8px;
+    border:0;
+    background:#ff8c00;
+    color:#08101a;
+    font-weight:700;
+    cursor:pointer;
+    text-decoration: none; /* Pour les liens <a> */
+    display: block; /* Pour les liens <a> */
+    text-align: center;
+  }
+  button.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.06)}
+  .small{color:#9aa0a6;font-size:14px}
+  ol{text-align:left;margin:8px auto;padding-left:18px;max-width:400px}
+  .error{color:#ffb3a7;margin-top:10px}
+  .actions{margin-top:12px;display:flex;gap:8px;justify-content:center}
+  /* Style pour le score personnel dans le bouton */
+  .game-score{font-weight:normal;color:rgba(8, 16, 26, 0.7);margin-left:8px;}
+  /* Styles spécifiques */
+  .shop-btn { background:#00aaff; color:white; font-weight:700; }
+  .intranet-btn { background:#1e90ff; color:white; font-weight:700; } 
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🎮 GameHub</h1>
+
+    <div id="loginCard" class="card">
+      <h2>Connexion</h2>
+      <div>
+        <input id="playerName" placeholder="Tape ton pseudo puis Entrée" autocomplete="off" />
+      </div>
+      <div class="actions">
+        <button id="enterBtn">Entrer</button>
+        <button id="clearBtn" class="ghost">Effacer localStorage</button>
+      </div>
+      <div id="loginError" class="error" style="display:none;"></div>
+      <p class="small">Ton pseudo sera stocké localement (pas de serveur).</p>
+    </div>
+
+    <div id="menuCard" class="card" style="display:none;">
+      <div style="display:flex;gap:12px;align-items:center;justify-content:center">
+        <div id="avatar" style="width:64px;height:64px;border-radius:50%;background:#ff8c00;display:flex;align-items:center;justify-content:center;font-weight:800;color:#08101a;font-size:30px"></div>
+        <div>
+          <div id="welcome" style="font-size:18px;font-weight:700"></div>
+          <div class="small">Connecté</div>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;align-items:center">
+        <button id="btnJeu1" onclick="go('jeu1.html')">Jeu 1 — Réaction</button>
+        <button id="btnJeu2" onclick="go('jeu2.html')">Jeu 2 — Évitement</button>
+        <button id="btnJeu3" onclick="go('jeu3.html')">Jeu 3 — Mémoire</button>
+        <button id="btnJeu4" onclick="go('jeu4.html')">Jeu 4 — Snake</button>
+        <button id="btnJeu5" onclick="go('jeu5.html')">Jeu 5 — Flappy</button>
+        <button id="btnJeu6" onclick="go('jeu6.html')">Jeu 6 — Pong</button>
+        <button id="btnJeu7" onclick="go('jeu7.html')">Jeu 7 — Puzzle Taquin</button>
+        <button id="btnJeu8" onclick="go('jeu8.html')">Jeu 8 — Clicker</button>
+        
+        <div style="margin-top:15px; display:flex; gap: 8px;">
+            <button class="menu-link shop-btn" onclick="go('boutique.html')">🛒 Boutique</button>
+
+            <a href="http://10.100.200.1" target="_blank" class="menu-link intranet-btn">
+                🌐 Intranet
+            </a>
+        </div>
+
+        <div class="actions" style="margin-top:12px">
+          <button class="ghost" onclick="logout()">Déconnexion</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🏆 Classements par Jeu</h2>
+      <div id="leaderboardContainer">
+        </div>
+      <p class="small">Top 3 de chaque jeu (meilleur score unique par joueur/jeu)</p>
+    </div>
+  </div>
+
+<script>
+/* --- MAP des noms de jeu pour la cohérence entre les fichiers et le classement --- */
+const GAME_MAP = {
+    'jeu1.html': 'Jeu 1 — Réaction',
+    'jeu2.html': 'Jeu 2 — Évitement',
+    'jeu3.html': 'Jeu 3 — Mémoire',
+    'jeu4.html': 'Jeu 4 — Snake',
+    'jeu5.html': 'Jeu 5 — Flappy',
+    'jeu6.html': 'Jeu 6 — Pong',
+    'jeu7.html': 'Jeu 7 — Puzzle Taquin',
+    'jeu8.html': 'Jeu 8 — Clicker',
+    'boutique.html': 'Achat (Bonus)' 
+};
+
+/* --------- Utilitaires --------- */
+
+// Génère une couleur hexadécimale à partir d'une chaîne (Avatar Dynamique)
+function stringToColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    let color = '#';
+    for (let i = 0; i < 3; i++) {
+        let value = (hash >> (i * 8)) & 0xFF;
+        color += ('00' + value.toString(16)).substr(-2);
+    }
+    return color;
+}
+
+function safeGetScores(){
+  try {
+    const scores = JSON.parse(localStorage.getItem('gh_scores') || '[]');
+    return scores.map(s => ({...s, game: s.game || 'Jeu Inconnu'}));
+  } catch(e){
+    localStorage.removeItem('gh_scores');
+    return [];
+  }
+}
+function safeSetScores(arr){ localStorage.setItem('gh_scores', JSON.stringify(arr)); }
+
+/* --------- Login / Menu --------- */
+const input = document.getElementById('playerName');
+const enterBtn = document.getElementById('enterBtn');
+const clearBtn = document.getElementById('clearBtn');
+const loginError = document.getElementById('loginError');
+
+enterBtn.addEventListener('click', login);
+input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') login(); });
+
+clearBtn.addEventListener('click', ()=>{
+  if(confirm('Effacer toutes les données locales (scores + pseudo) ?')) {
+    localStorage.removeItem('gh_scores'); localStorage.removeItem('gh_player'); localStorage.removeItem('gh_avatar');
+    location.reload();
+  }
+});
+
+function login(){
+  const name = input.value.trim();
+  if(!name){
+    loginError.style.display='block';
+    loginError.innerText = 'Le pseudo est vide — entre un pseudo valide.';
+    return;
+  }
+  loginError.style.display='none';
+  localStorage.setItem('gh_player', name);
+  localStorage.setItem('gh_avatar', name[0].toUpperCase());
+  showMenu(name);
+  loadScores();
+}
+
+function logout(){
+  localStorage.removeItem('gh_player'); localStorage.removeItem('gh_avatar');
+  document.getElementById('menuCard').style.display='none';
+  document.getElementById('loginCard').style.display='block';
+  input.value='';
+}
+
+/* --------- Affichage du Menu (AMÉLIORÉ) --------- */
+function showMenu(name){
+  document.getElementById('loginCard').style.display='none';
+  document.getElementById('menuCard').style.display='block';
+  document.getElementById('welcome').innerText = 'Bienvenue, ' + name;
+  
+  const avatarElement = document.getElementById('avatar');
+  const avatarChar = (localStorage.getItem('gh_avatar') || name[0].toUpperCase());
+  
+  // 1. Avatar Dynamique : Couleur basée sur le pseudo
+  avatarElement.innerText = avatarChar;
+  avatarElement.style.background = stringToColor(name);
+
+  // 2. Mise à jour des scores personnels dans le menu
+  updatePersonalScores(name);
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  const stored = localStorage.getItem('gh_player');
+  if(stored){
+    input.value = stored;
+    showMenu(stored);
+  }
+  loadScores();
+});
+
+/* --------- Mise à jour des Scores Personnels --------- */
+function updatePersonalScores(playerName) {
+    const allScores = safeGetScores();
+    const personalBest = {};
+
+    // Trouver le meilleur score de ce joueur pour chaque jeu
+    allScores.forEach(s => {
+        if (s.name === playerName) {
+            if (!personalBest[s.game] || s.score > personalBest[s.game]) {
+                personalBest[s.game] = s.score;
+            }
+        }
+    });
+
+    // Mettre à jour les boutons du menu
+    for (const [file, gameName] of Object.entries(GAME_MAP)) {
+        // Exclure la boutique et les catégories non jouables du menu des jeux
+        if (file === 'boutique.html' || gameName === 'Achat (Bonus)') continue;
+        
+        const btnId = `btn${file.replace('.html', '').toUpperCase()}`;
+        const btn = document.getElementById(btnId);
+        
+        if (btn) {
+            let baseName = gameName;
+            
+            if (personalBest[gameName] !== undefined) {
+                 baseName += `<span class="game-score">(${personalBest[gameName]})</span>`;
+            }
+            
+            btn.innerHTML = baseName;
+        }
+    }
+}
+
+
+/* --------- Leaderboard (MIS À JOUR) --------- */
+function loadScores(){
+  const container = document.getElementById('leaderboardContainer');
+  const allScores = safeGetScores();
+  container.innerHTML = ''; 
+
+  const bestScoresByGame = {};
+  const playerName = localStorage.getItem('gh_player');
+
+  // 1. Regrouper les meilleurs scores uniques par joueur/jeu
+  for(const score of allScores){
+    const game = score.game;
+    if (!bestScoresByGame[game]) {
+      bestScoresByGame[game] = {};
+    }
+    const currentBest = bestScoresByGame[game][score.name];
+    if (!currentBest || score.score > currentBest.score) {
+      bestScoresByGame[game][score.name] = score;
+    }
+  }
+
+  const gameKeys = Object.keys(bestScoresByGame);
+  if (gameKeys.length === 0) {
+      const p = document.createElement('p');
+      p.textContent = 'Aucun score enregistré pour l\'instant.';
+      p.className = 'small';
+      container.appendChild(p);
+      return;
+  }
+  
+  // S'assurer de l'ordre d'affichage des jeux (basé sur le GAME_MAP)
+  const orderedGameKeys = Object.values(GAME_MAP).filter(name => gameKeys.includes(name));
+
+  // 2. Traiter chaque jeu (dans l'ordre)
+  for(const game of orderedGameKeys){
+    let scoresForGame = Object.values(bestScoresByGame[game]);
+
+    // 3. Tri (spécial pour le Taquin : score le plus bas est le meilleur)
+    if (game === 'Jeu 7 — Puzzle Taquin') {
+        // Tri croissant pour le Taquin (coups les plus bas en premier)
+        scoresForGame.sort((a,b)=>a.score - b.score);
+    } else {
+        // Tri décroissant pour tous les autres jeux
+        scoresForGame.sort((a,b)=>b.score - a.score);
+    }
+
+    // 4. Créer l'élément de classement pour ce jeu (Top 3)
+    const gameTitle = document.createElement('h3');
+    gameTitle.textContent = game;
+    gameTitle.style.marginTop = '20px';
+    container.appendChild(gameTitle);
+
+    const ol = document.createElement('ol');
+    ol.style.maxWidth = '400px';
+    ol.style.margin = '8px auto';
+    container.appendChild(ol);
+
+    // 5. Afficher le Top 3 (slice(0, 3)) avec mise en évidence du joueur
+    const topScores = scoresForGame.slice(0, 3);
+    
+    if (topScores.length === 0) {
+        const li = document.createElement('li');
+        li.textContent = "Soyez le premier à jouer !";
+        li.style.listStyleType = 'none';
+        ol.appendChild(li);
+    } else {
+        topScores.forEach(s=>{
+            const li = document.createElement('li');
+            
+            // Affichage adapté (ex: pour le Taquin)
+            let scoreText = s.score.toLocaleString('fr-FR');
+            if (game === 'Jeu 7 — Puzzle Taquin') {
+                 scoreText = `${s.score} coups`;
+            } else if (game === 'Jeu 8 — Clicker') {
+                 scoreText = `${s.score.toLocaleString('fr-FR')} ressources`;
+            } else if (game === 'Achat (Bonus)') {
+                 scoreText = `${s.score.toLocaleString('fr-FR')} points`;
+            }
+            
+            li.textContent = `${s.name} — ${scoreText}`;
+            
+            // Mise en évidence du joueur dans le classement
+            if (s.name === playerName) {
+                li.style.fontWeight = 'bold';
+                li.style.color = '#00ff66'; // Vert pour l'accentuation
+            }
+            ol.appendChild(li);
+        });
+    }
+  }
+}
+
+/* --------- Navigation helper --------- */
+function go(page){
+  if(!localStorage.getItem('gh_player')){
+    alert('Tu dois te connecter avant de lancer un jeu.');
+    return;
+  }
+  location.href = page;
+}
+</script>
+</body>
+</html>

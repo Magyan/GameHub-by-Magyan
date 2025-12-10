@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>GameHub - Boutique</title>
+<style>
+  body { margin:0; font-family:Arial,Helvetica,sans-serif; background:#0f1724; color:#fff; text-align:center; }
+  .wrap{max-width:900px;margin:28px auto;padding:20px;}
+  .card{background:#111;padding:18px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.6); margin-bottom:18px;}
+  button{padding:10px 16px;border-radius:8px;border:0;background:#ff8c00;color:#08101a;font-weight:700;cursor:pointer; margin-top:10px;}
+  #back{background:#ff8c00;}
+  .product-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; margin-top: 20px; }
+  .product-item { background: #1a2430; padding: 20px; border-radius: 10px; width: 250px; text-align: center; }
+  .product-item h3 { color: #00ff66; }
+  .price { font-size: 1.5em; font-weight: bold; margin: 10px 0; color: #ff8c00; }
+  .points { font-size: 1.2em; color: #fff; margin-bottom: 15px; }
+  .paypal-note { margin-top: 30px; color: #ffb3a7; font-size: 14px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🛒 Boutique GameHub</h1>
+
+    <button id="back" onclick="location.href='index.html'">Retour à l'accueil</button>
+
+    <div id="shopContent" class="card" style="display:none;">
+      <h2>Acheter des Points de Classement</h2>
+      <p>Connecté en tant que : <strong id="playerNameDisplay"></strong></p>
+
+      <div class="product-grid">
+
+        <div class="product-item">
+          <h3>Pack Découverte</h3>
+          <p class="points">+ 100 Points</p>
+          <div class="price">1.99 €</div>
+          <button onclick="purchasePoints(100, '1.99 EUR')">Acheter par PayPal (Simulé)</button>
+        </div>
+
+        <div class="product-item">
+          <h3>Pack Avantage</h3>
+          <p class="points">+ 500 Points</p>
+          <div class="price">4.99 €</div>
+          <button onclick="purchasePoints(500, '4.99 EUR')">Acheter par PayPal (Simulé)</button>
+        </div>
+
+        <div class="product-item">
+          <h3>Pack Pro</h3>
+          <p class="points">+ 1500 Points</p>
+          <div class="price">9.99 €</div>
+          <button onclick="purchasePoints(1500, '9.99 EUR')">Acheter par PayPal (Simulé)</button>
+        </div>
+
+      </div>
+      
+      <p class="paypal-note">
+          AVERTISSEMENT : Le paiement PayPal est **simulé** ici. L'intégration réelle nécessite un serveur sécurisé. <br> Les points sont ajoutés directement dans votre stockage local.
+      </p>
+
+    </div>
+    
+    <div id="loginRequired" class="card">
+        <h2>Connexion Requise</h2>
+        <p>Veuillez vous connecter sur la page d'accueil pour accéder à la boutique.</p>
+        <button onclick="location.href='index.html'">Aller à la connexion</button>
+    </div>
+
+  </div>
+
+<script>
+// --- Utilitaires de Score (à copier depuis votre index.html) ---
+function safeGetScores(){ try { return JSON.parse(localStorage.getItem('gh_scores')||'[]'); } catch(e){ return []; } }
+function safeSetScores(arr){ localStorage.setItem('gh_scores', JSON.stringify(arr)); }
+
+document.addEventListener('DOMContentLoaded', ()=>{
+    const playerName = localStorage.getItem('gh_player');
+    
+    if (playerName) {
+        document.getElementById('playerNameDisplay').innerText = playerName;
+        document.getElementById('shopContent').style.display = 'block';
+        document.getElementById('loginRequired').style.display = 'none';
+    } else {
+        document.getElementById('shopContent').style.display = 'none';
+        document.getElementById('loginRequired').style.display = 'block';
+    }
+});
+
+
+/**
+ * SIMULATION D'ACHAT : Ajoute des points au classement du joueur.
+ * @param {number} pointsToAdd - Nombre de points à ajouter.
+ * @param {string} price - Prix de l'achat (pour la simulation).
+ */
+function purchasePoints(pointsToAdd, price) {
+    const playerName = localStorage.getItem('gh_player');
+    
+    if (!playerName) {
+        alert("Erreur : Vous devez être connecté pour acheter des points.");
+        return;
+    }
+    
+    // --- Étape de Simulation PayPal ---
+    // Dans une application réelle, le code ici déclencherait l'API PayPal
+    // et attendrait une confirmation de paiement sécurisée par le serveur.
+    
+    const confirmation = confirm(`SIMULATION D'ACHAT :\nVoulez-vous vraiment simuler l'achat de ${pointsToAdd} points pour ${price} ?`);
+
+    if (confirmation) {
+        
+        // --- Ajout des points (Mécanisme de Trampa) ---
+        const currentScores = safeGetScores();
+        
+        // Crée un enregistrement de score spécial "Achat" pour le classement
+        const purchaseScoreEntry = {
+            name: playerName,
+            score: pointsToAdd,
+            game: "Achat (Bonus)", // Utilise un nom de jeu unique
+            date: new Date().toISOString()
+        };
+
+        currentScores.push(purchaseScoreEntry);
+        safeSetScores(currentScores);
+        
+        alert(`Félicitations, ${playerName} ! ${pointsToAdd} points ont été ajoutés à votre classement sous la catégorie "Achat (Bonus)".`);
+        
+        // Rediriger vers l'accueil pour voir le classement mis à jour
+        location.href = 'index.html'; 
+    }
+}
+</script>
+</body>
+</html>

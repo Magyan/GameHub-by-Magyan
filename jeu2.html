@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jeu 2 - Évitement Ultime</title>
+<style>
+body { background:#0f1724; color:white; font-family:Arial; text-align:center; }
+button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:pointer; font-weight:bold; }
+#start { background:#00ff66; }
+#back { background:#ff8c00; }
+#gameArea { 
+    width:600px; 
+    height:400px; 
+    background:#111; 
+    margin:20px auto; 
+    position:relative; 
+    overflow:hidden; 
+    border-radius:10px;
+    border: 2px solid #333;
+    cursor: pointer; 
+}
+#player { 
+    width:40px; 
+    height:40px; 
+    background:#00aaff; 
+    position:absolute; 
+    top:180px; 
+    left:20px; 
+    border-radius:5px;
+    box-shadow: 0 0 10px rgba(0, 170, 255, 0.7);
+    transition: background 0.1s, opacity 0.1s;
+}
+.obstacle { 
+    position:absolute; 
+    right:-50px; 
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(255, 0, 0, 0.7);
+    transition: width 0.1s, height 0.1s;
+}
+.obstacle.type-normal {
+    width: 40px; 
+    height: 40px;
+    background: red;
+}
+.obstacle.type-fast {
+    width: 25px; 
+    height: 25px;
+    background: #ff5e00;
+    border-radius: 50%;
+}
+.blinking {
+    opacity: 0.4;
+    background: #ff0000; 
+}
+#instructions {
+    max-width: 600px;
+    margin: 10px auto;
+    padding: 15px;
+    background: #0d141e;
+    border-radius: 8px;
+    text-align: left;
+    font-size: 14px;
+    color: #9aa0a6;
+}
+#instructions strong { color: white; }
+#lifeDisplay {
+    margin-top: 10px;
+    font-size: 24px;
+}
+.life-icon {
+    color: red;
+    margin: 0 2px;
+    font-size: 1.2em;
+}
+.life-lost {
+    opacity: 0.3;
+}
+</style>
+</head>
+<body>
+
+<h1>Jeu 2 — Évitement Ultime</h1>
+
+<button id="start">Démarrer</button>
+<button id="back" onclick="location.href='index.html'">Retour</button>
+
+<div id="instructions">
+    <h3>Mode d'emploi :</h3>
+    <ul>
+        <li><strong>Objectif :</strong> Éviter les blocs rouges le plus longtemps possible.</li>
+        <li><strong>Contrôles :</strong> Touches <strong>Flèche HAUT/BAS</strong> ou <strong>clic/toucher</strong> la zone de jeu.</li>
+        <li><strong>Vies :</strong> Vous commencez avec <strong>3</strong> vies. La collision vous fait perdre une vie et clignoter !</li>
+        <li><strong>Difficulté :</strong> La vitesse et la fréquence d'apparition augmentent par paliers de score (0, 10, 25, 50, etc.).</li>
+    </ul>
+</div>
+
+<div id="gameArea">
+  <div id="player"></div>
+</div>
+
+<h2>Score : <span id="score">0</span></h2>
+<div id="lifeDisplay">Vies: <span id="livesContainer"></span></div>
+
+<script>
+// --- Constantes et Configuration ---
+const GAME_WIDTH = 600;
+const GAME_HEIGHT = 400;
+const PLAYER_SIZE = 40;
+const INITIAL_MAX_LIVES = 3;
+const PLAYER_MOVE_SPEED = 5; // Vitesse par frame
+const COLLISION_GRACE_PERIOD_MS = 1000; // ms d'invulnérabilité
+const MAX_BOTTOM = GAME_HEIGHT - PLAYER_SIZE;
+
+// --- Paramètres de Difficulté par Palier ---
+const DIFFICULTY_LEVELS = [
+    { score: 0, baseSpeed: 5, spawnRateMs: 1200 }, 
+    { score: 10, baseSpeed: 7, spawnRateMs: 1000 },
+    { score: 25, baseSpeed: 9, spawnRateMs: 800, enableFast: true }, 
+    { score: 50, baseSpeed: 11, spawnRateMs: 650 }, 
+    { score: 100, baseSpeed: 13, spawnRateMs: 500 },
+];
+
+// --- Variables d'État du Jeu ---
+let score = 0;
+let lives = INITIAL_MAX_LIVES;
+let active = false;
+let obstacles = [];
+let gameLoopId; 
+let lastSpawnTime = 0; // Timestamp du dernier obstacle créé
+let isInvincible = false;
+let currentLevel = DIFFICULTY_LEVELS[0];
+
+let moveUp = false;
+let moveDown = false;
+let playerY = 0; 
+
+const area = document.getElementById("gameArea");
+const player = document.getElementById("player");
+const scoreDisplay = document.getElementById("score");
+const livesContainer = document.getElementById("livesContainer");
+
+
+// --- Contrôles du joueur (Clavier/Tactile) ---
+
+document.addEventListener("keydown", e => {
+    if (e.key === "ArrowUp") moveUp = true;
+    if (e.key === "ArrowDown") moveDown = true;
+    if (!active && (e.key === "ArrowUp" || e.key === "ArrowDown")) start(); // Démarre au premier mouvement
+});
+
+document.addEventListener("keyup", e => {
+    if (e.key === "ArrowUp") moveUp = false;
+    if (e.key === "ArrowDown") moveDown = false;
+});
+
+area.addEventListener('touchstart', handlePointerDown);
+area.addEventListener('mousedown', handlePointerDown);
+area.addEventListener('touchend', handlePointerUp);
+area.addEventListener('mouseup', handlePointerUp);
+
+function handlePointerDown(e) {
+    e.preventDefault();
+    if (!active) start(); // Démarre au premier clic/toucher
+    if (!active) return;
+    
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const rect = area.getBoundingClientRect();
+    const areaCenterY = rect.top + rect.height / 2;
+    
+    if (clientY < areaCenterY) {
+        moveUp = true;
+        moveDown = false;
+    } else {
+        moveDown = true;
+        moveUp = false;
+    }
+}
+
+function handlePointerUp() {
+    moveUp = false;
+    moveDown = false;
+}
+
+// --- Démarrage du Jeu ---
+function start(){
+    if (gameLoopId) cancelAnimationFrame(gameLoopId);
+    if (active) return; // Empêche de redémarrer si déjà actif
+
+    score = 0; 
+    lives = INITIAL_MAX_LIVES;
+    active = true;
+    isInvincible = false;
+    currentLevel = DIFFICULTY_LEVELS[0];
+    lastSpawnTime = performance.now(); // Utiliser performance.now() pour le temps RAF
+    
+    playerY = (GAME_HEIGHT / 2 - PLAYER_SIZE / 2);
+    player.style.top = playerY + "px";
+    player.style.left = "20px";
+    player.classList.remove('blinking');
+    
+    obstacles.forEach(o => o.element.remove());
+    obstacles = [];
+    
+    updateLifeDisplay();
+    scoreDisplay.textContent = 0;
+    
+    gameLoop(performance.now()); // Démarrage de la boucle RAF
+}
+
+// --- Boucle de Jeu (RAF) ---
+function gameLoop(timestamp) {
+    if (!active) {
+        // La fonction gameLoop ne devrait plus être appelée si !active
+        return; 
+    }
+
+    const deltaTime = (timestamp - (gameLoop.lastTime || timestamp)) / 1000; // DeltaTime en secondes
+    gameLoop.lastTime = timestamp;
+
+    updatePlayerPosition();
+    updateDifficulty();
+    spawnObstacleLogic(timestamp);
+    updateObstacles(deltaTime);
+    
+    gameLoopId = requestAnimationFrame(gameLoop);
+}
+gameLoop.lastTime = 0; 
+
+
+// --- Mise à Jour du Joueur et de la Difficulté ---
+
+function updatePlayerPosition() {
+    if (moveUp) {
+        playerY = Math.max(0, playerY - PLAYER_MOVE_SPEED);
+    }
+    if (moveDown) {
+        playerY = Math.min(MAX_BOTTOM, playerY + PLAYER_MOVE_SPEED);
+    }
+    player.style.top = playerY + "px";
+}
+
+function updateDifficulty() {
+    const nextLevel = DIFFICULTY_LEVELS.find(l => l.score > currentLevel.score && score >= l.score);
+    if (nextLevel) {
+        currentLevel = nextLevel;
+        console.log(`Niveau atteint: ${currentLevel.score}. Nouvelle vitesse: ${currentLevel.baseSpeed}`);
+    }
+}
+
+
+// --- Logique des Obstacles et de Collision ---
+
+function spawnObstacleLogic(timestamp) {
+    // CORRECTION : Utiliser le timestamp pour gérer la fréquence de spawn
+    if (timestamp - lastSpawnTime > currentLevel.spawnRateMs) { 
+        
+        const isFast = currentLevel.enableFast && Math.random() > 0.7;
+        
+        const obs = createObstacleData(isFast);
+        
+        area.appendChild(obs.element);
+        obstacles.push(obs); 
+        
+        lastSpawnTime = timestamp;
+    }
+}
+
+function createObstacleData(isFast = false) {
+    const size = isFast ? 25 : PLAYER_SIZE;
+    const typeClass = isFast ? 'type-fast' : 'type-normal';
+    
+    // La vitesse est maintenant gérée par le deltaTime dans updateObstacles, donc on stocke baseSpeed
+    const baseSpeed = isFast ? currentLevel.baseSpeed * 1.5 : currentLevel.baseSpeed;
+    
+    const o = document.createElement("div");
+    o.classList.add("obstacle", typeClass);
+    o.style.width = size + "px";
+    o.style.height = size + "px";
+    
+    const randomY = Math.random() * (GAME_HEIGHT - size);
+    o.style.top = randomY + "px";
+    
+    return { 
+        element: o, 
+        passed: false, 
+        y: randomY, 
+        x: GAME_WIDTH, 
+        size: size,
+        baseSpeed: baseSpeed
+    };
+}
+
+function updateObstacles(deltaTime) {
+    const playerX = 20; 
+
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        const o = obstacles[i];
+        
+        // CORRECTION: Mouvement basé sur le deltaTime (plus stable)
+        // La vitesse en pixels par frame est baseSpeed * (deltaTime / (1/60s))
+        o.x -= o.baseSpeed * 60 * deltaTime; // Approximation si la baseSpeed était pour du 60FPS
+        o.element.style.left = o.x + "px";
+
+        // 1. Détection de collision (utilise les positions numériques)
+        if(!isInvincible && checkCollisionAABB(playerX, playerY, PLAYER_SIZE, o.x, o.y, o.size)) {
+            handleCollision();
+            o.element.remove();
+            obstacles.splice(i, 1);
+            continue;
+        }
+        
+        // 2. Scoring 
+        if (!o.passed && o.x + o.size < playerX) {
+            score++;
+            o.passed = true;
+            scoreDisplay.textContent = score;
+        }
+
+        // 3. Suppression si hors champ
+        if(o.x < -o.size){
+            o.element.remove();
+            obstacles.splice(i, 1);
+        }
+    }
+}
+
+// Fonction de collision rapide (AABB - utilise les positions Y numériques)
+function checkCollisionAABB(pX, pY, pSize, oX, oY, oSize){
+    return (
+        pX < oX + oSize && 
+        pX + pSize > oX && 
+        pY < oY + oSize && 
+        pY + pSize > oY
+    );
+}
+
+// --- Gestion des Collisions et des Vies ---
+function handleCollision() {
+    lives--;
+    updateLifeDisplay();
+    
+    if (lives <= 0) {
+        gameOver();
+    } else {
+        isInvincible = true;
+        player.classList.add('blinking');
+        
+        setTimeout(() => {
+            isInvincible = false;
+            player.classList.remove('blinking');
+        }, COLLISION_GRACE_PERIOD_MS);
+    }
+}
+
+function updateLifeDisplay() {
+    livesContainer.innerHTML = '';
+    for(let i = 0; i < INITIAL_MAX_LIVES; i++) {
+        const span = document.createElement('span');
+        span.classList.add('life-icon');
+        span.innerHTML = '❤️';
+        if (i >= lives) {
+            span.classList.add('life-lost');
+        }
+        livesContainer.appendChild(span);
+    }
+}
+
+
+// --- Fin de Jeu ---
+function gameOver(){
+    active = false;
+    
+    if (gameLoopId) cancelAnimationFrame(gameLoopId);
+    
+    // S'assurer que le timeout d'invincibilité est clair
+    player.classList.remove('blinking');
+    
+    obstacles.forEach(o => o.element.remove());
+    
+    saveScore(score, "Jeu 2 — Évitement");
+    alert("GAME OVER ! Score final : " + score);
+}
+
+// --- Fonction de Sauvegarde de Score ---
+function saveScore(score, game){
+    const name = localStorage.getItem("gh_player") || "Anonyme";
+    try {
+        const arr = JSON.parse(localStorage.getItem("gh_scores") || "[]");
+        arr.push({name, score, game});
+        localStorage.setItem("gh_scores", JSON.stringify(arr));
+    } catch(e) {
+        console.error("Erreur lors de la sauvegarde du score:", e);
+    }
+}
+
+// Initialisation au chargement
+document.addEventListener('DOMContentLoaded', () => {
+    playerY = (GAME_HEIGHT / 2 - PLAYER_SIZE / 2);
+    player.style.top = playerY + "px";
+    player.style.left = "20px";
+    updateLifeDisplay();
+    
+    // Le jeu est initialisé mais inactif, prêt à être démarré
+    document.getElementById("start").onclick = start;
+});
+</script>
+</body>
+</html>

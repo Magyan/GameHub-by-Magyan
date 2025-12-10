@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jeu 3 - Mémoire Ultime</title>
+<style>
+body { background:#0f1724; color:white; font-family:Arial; text-align:center; }
+button { padding:10px 20px; margin:10px; border-radius:8px; border:0; cursor:pointer; font-weight:bold; }
+#start { background:#00ff66; }
+#back { background:#ff8c00; }
+
+/* Styles dynamiques pour la grille */
+#grid {
+    display:grid;
+    gap:10px;
+    justify-content:center;
+    margin-top:20px;
+}
+.tile { 
+    background:#444; 
+    border-radius:10px; 
+    cursor:pointer; 
+    transition: transform 0.1s, background 0.1s; 
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #08101a;
+}
+.active { 
+    background:rgb(255, 238, 0) !important;
+    box-shadow: 0 0 15px rgb(255, 238, 0); 
+}
+.correct-press {
+    background: #00ff66 !important; /* Vert pour clic correct */
+}
+.error-press {
+    background: red !important; /* Rouge pour clic incorrect */
+}
+.tile:active {
+    transform: scale(0.95);
+}
+.wait {
+    border: 3px solid #00aaff;
+}
+#instructions {
+    max-width: 600px;
+    margin: 10px auto;
+    padding: 15px;
+    background: #0d141e;
+    border-radius: 8px;
+    text-align: left;
+    font-size: 14px;
+    color: #9aa0a6;
+}
+#instructions strong { color: white; }
+#message { color: #00ff66; font-weight: bold; margin-bottom: 15px; }
+#timerDisplay {
+    color: #ff8c00;
+    font-size: 1.5em;
+    font-weight: bold;
+}
+#difficultySelector {
+    margin-bottom: 20px;
+}
+</style>
+</head>
+<body>
+
+<h1>Jeu 3 — Mémoire Ultime</h1>
+
+<button id="back" onclick="location.href='index.html'">Retour</button>
+
+<div id="instructions">
+    <h3>Mode d'emploi :</h3>
+    <ul>
+        <li><strong>Objectif :</strong> Répétez la séquence de tuiles qui s'allument.</li>
+        <li><strong>Défi :</strong> La séquence s'allonge, la vitesse de flash et le temps de réponse diminuent.</li>
+        <li><strong>Temps Limite :</strong> Vous avez un chronomètre par tuile pour répondre.</li>
+    </ul>
+</div>
+
+<div id="message">Choisissez votre difficulté et démarrez !</div>
+
+<div id="difficultySelector">
+    <button id="diff-easy" onclick="setDifficulty(4, 80, 2000, 350)">Facile (4x4, 2s)</button>
+    <button id="diff-medium" onclick="setDifficulty(6, 60, 1500, 250)">Moyen (6x6, 1.5s)</button>
+    <button id="diff-hard" onclick="setDifficulty(8, 45, 1000, 150)">Difficile (8x8, 1s)</button>
+</div>
+
+<button id="start" style="display:none;">Démarrer la séquence</button>
+
+<h2>Score : <span id="score">0</span></h2>
+<div id="timerDisplay" style="display:none;">Temps restant : 0.0s</div>
+
+<div class="grid" id="grid"></div>
+
+<script>
+// --- Variables de Configuration ---
+let GRID_DIMENSION = 4; 
+let TILE_SIZE_PX = 80;
+let INITIAL_RESPONSE_TIME_MS = 2000;
+let MIN_RESPONSE_TIME_MS = 500; // Le temps de réponse ne descendra pas en dessous de cette valeur
+
+// --- Variables d'État du Jeu ---
+let order = [], playerOrder = [], score = 0, playing = false;
+let flashTime = 300; 
+let sequenceDelay = 600;
+let timeRemaining = 0;
+let timerInterval;
+
+const grid = document.getElementById("grid");
+const tiles = [];
+const messageDisplay = document.getElementById("message");
+const scoreDisplay = document.getElementById("score");
+const timerDisplay = document.getElementById("timerDisplay");
+const difficultySelector = document.getElementById("difficultySelector");
+const startButton = document.getElementById("start");
+
+// Fonction pour configurer la difficulté et initialiser la grille
+function setDifficulty(dim, size, time, minTime) {
+    GRID_DIMENSION = dim;
+    TILE_SIZE_PX = size;
+    INITIAL_RESPONSE_TIME_MS = time;
+    MIN_RESPONSE_TIME_MS = minTime;
+
+    createTiles(); // Recréer la grille
+    
+    // Afficher le bouton Démarrer après la sélection de la difficulté
+    startButton.style.display = 'inline-block';
+    messageDisplay.innerText = `Difficulté ${dim}x${dim} sélectionnée. Prêt à jouer !`;
+    startButton.onclick = startGame; // Relier le bouton Démarrer à startGame
+}
+
+// Crée les tuiles initiales dans le DOM
+function createTiles() {
+    grid.innerHTML = '';
+    tiles.length = 0; 
+    
+    const tileCount = GRID_DIMENSION * GRID_DIMENSION;
+    
+    grid.style.gridTemplateColumns = `repeat(${GRID_DIMENSION}, ${TILE_SIZE_PX}px)`;
+    
+    for(let i = 0; i < tileCount; i++){
+      const d = document.createElement("div");
+      d.classList.add("tile");
+      d.style.width = `${TILE_SIZE_PX}px`;
+      d.style.height = `${TILE_SIZE_PX}px`;
+      d.dataset.id = i;
+      d.textContent = i + 1; // Afficher le numéro de la tuile
+      d.onclick = () => pressTile(i);
+      grid.appendChild(d);
+      tiles.push(d);
+    }
+}
+
+
+// --- Logique du Jeu ---
+
+function startGame(){
+  if (playing) return;
+    
+  // Nettoyage de l'état
+  order = []; playerOrder = []; score = 0; playing = true;
+  flashTime = 300; 
+  sequenceDelay = 600;
+  
+  scoreDisplay.innerText = 0;
+  timerDisplay.style.display = 'block';
+  difficultySelector.style.display = 'none'; // Masquer le sélecteur
+  
+  // Rétablir l'état visuel des tuiles
+  tiles.forEach(t => t.classList.remove("correct-press", "error-press", "active"));
+  
+  nextRound();
+}
+
+function nextRound(){
+  if (!playing) return;
+  
+  stopResponseTimer(); 
+  playerOrder = [];
+  
+  // Augmentation de la difficulté
+  flashTime = Math.max(100, flashTime - 5);
+  sequenceDelay = Math.max(200, sequenceDelay - 10); 
+
+  // Ajout d'une nouvelle tuile
+  const tileCount = GRID_DIMENSION * GRID_DIMENSION;
+  order.push(Math.floor(Math.random() * tileCount));
+  let i = 0;
+
+  grid.classList.remove("wait");
+  messageDisplay.innerText = "Mémorisez la séquence...";
+
+  // Affichage de la séquence
+  const interval = setInterval(()=>{
+    flash(order[i]);
+    i++;
+    if(i >= order.length) {
+      clearInterval(interval);
+      
+      // Après la séquence, on passe en mode attente du joueur
+      setTimeout(()=>{
+          grid.classList.add("wait");
+          messageDisplay.innerText = "À votre tour !";
+          startResponseTimer();
+      }, sequenceDelay);
+    }
+  }, sequenceDelay);
+}
+
+function flash(id, isError = false){
+  const t = tiles[id];
+  
+  if (isError) {
+      // Flash d'erreur
+      t.classList.add("error-press");
+      setTimeout(() => t.classList.remove("error-press"), 300);
+      return;
+  }
+  
+  // Flash de séquence
+  t.classList.add("active");
+  setTimeout(() => t.classList.remove("active"), flashTime);
+}
+
+function pressTile(id){
+  if(!playing || playerOrder.length === order.length || !grid.classList.contains("wait")) return;
+  
+  stopResponseTimer(); // Arrêter le chronomètre pour ce clic
+  
+  playerOrder.push(id);
+  const currentTurn = playerOrder.length - 1;
+
+  if(playerOrder[currentTurn] !== order[currentTurn]) {
+    // Erreur de séquence
+    flash(id, true);
+    return gameOver("Séquence incorrecte");
+  } else {
+    // Clic correct
+    const t = tiles[id];
+    t.classList.add("correct-press");
+    setTimeout(() => t.classList.remove("correct-press"), 200);
+
+    // 3. Séquence correcte et complète
+    if(playerOrder.length === order.length){
+      grid.classList.remove("wait");
+      messageDisplay.innerText = "Réussi ! Nouvelle séquence...";
+      score++;
+      scoreDisplay.innerText = score;
+      
+      // Attendre avant de passer au round suivant
+      setTimeout(nextRound, 1000); 
+    } else {
+      // 4. Séquence correcte mais incomplète : relancer le chronomètre
+      startResponseTimer();
+    }
+  }
+}
+
+// --- Logique du Chronomètre de Réponse ---
+
+function startResponseTimer() {
+    // Calcul du temps limite pour le round actuel
+    const timeLimitForRound = Math.max(MIN_RESPONSE_TIME_MS, INITIAL_RESPONSE_TIME_MS - (order.length * 50)); 
+    timeRemaining = timeLimitForRound;
+
+    timerDisplay.textContent = `Temps restant : ${(timeRemaining / 1000).toFixed(1)}s`;
+
+    timerInterval = setInterval(() => {
+        timeRemaining -= 100;
+        
+        // Affichage du temps
+        timerDisplay.textContent = `Temps restant : ${(timeRemaining / 1000).toFixed(1)}s`;
+
+        // Alerte visuelle
+        if (timeRemaining <= 500) {
+            timerDisplay.style.color = 'red';
+        } else {
+            timerDisplay.style.color = '#ff8c00';
+        }
+
+        if (timeRemaining <= 0) {
+            stopResponseTimer();
+            gameOver("Temps de réponse dépassé");
+        }
+    }, 100);
+}
+
+function stopResponseTimer() {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerDisplay.style.color = 'white'; // Retour à la couleur neutre
+    }
+}
+
+// --- Fin de Jeu ---
+
+function gameOver(reason){
+  playing = false;
+  stopResponseTimer();
+  grid.classList.remove("wait");
+  timerDisplay.style.display = 'none';
+  messageDisplay.innerText = `Jeu terminé. ${reason}. Score : ${score}`;
+  
+  // Flash d'erreur sur toutes les tuiles
+  tiles.forEach(t => t.classList.add("error-press"));
+  setTimeout(() => {
+      tiles.forEach(t => t.classList.remove("error-press"));
+      alert(`Erreur ! ${reason}. Score final : ${score}`);
+      saveScore(score, "Jeu 3 — Mémoire");
+  }, 500);
+  
+  // Afficher à nouveau le sélecteur et le bouton Démarrer
+  difficultySelector.style.display = 'block';
+  startButton.style.display = 'inline-block';
+}
+
+// Fonction de sauvegarde de score 
+function saveScore(score, game){
+  const name = localStorage.getItem("gh_player") || "Anonyme";
+  try {
+      const arr = JSON.parse(localStorage.getItem("gh_scores") || "[]");
+      arr.push({name, score, game});
+      localStorage.setItem("gh_scores", JSON.stringify(arr));
+  } catch(e) {
+      console.error("Erreur lors de la sauvegarde du score:", e);
+  }
+}
+
+// Initialisation au chargement
+document.addEventListener('DOMContentLoaded', () => {
+    // Crée la grille par défaut au chargement (4x4 facile)
+    setDifficulty(4, 80, 2000, 350); 
+    timerDisplay.style.display = 'none';
+    startButton.style.display = 'inline-block';
+    difficultySelector.style.display = 'block';
+});
+</script>
+</body>
+</html>

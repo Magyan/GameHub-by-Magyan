@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jeu 5 - Flappy Ultime</title>
+<style>
+body{background:#0f1724;color:white;font-family:Arial;text-align:center;user-select:none;}
+canvas{
+    background:#111;
+    margin-top:20px;
+    border-radius:6px;
+    border: 2px solid #ff8c00; 
+    cursor: pointer;
+}
+button{padding:10px 20px;margin:10px;border-radius:8px;border:0;cursor:pointer;font-weight:bold;}
+#start{background:#00ff66;} #back{background:#ff8c00;}
+#message{color:white;font-weight:bold;margin-top:10px;}
+#instructions {
+    max-width: 600px;
+    margin: 10px auto;
+    padding: 15px;
+    background: #0d141e;
+    border-radius: 8px;
+    text-align: left;
+    font-size: 14px;
+    color: #9aa0a6;
+}
+#instructions strong { color: white; }
+</style>
+</head>
+<body>
+
+<h1>Jeu 5 — Flappy Ultime</h1>
+
+<button id="start">Démarrer</button>
+<button id="back" onclick="location.href='index.html'">Retour</button>
+
+<div id="instructions">
+    <h3>Mode d'emploi :</h3>
+    <ul>
+        <li><strong>Objectif :</strong> Guider l'oiseau à travers les espaces entre les tuyaux verts.</li>
+        <li><strong>Contrôles :</strong> Cliquez/touchez l'écran ou appuyez sur <strong>ESPACE</strong> pour sauter. Appuyez sur <strong>P</strong> pour Pause.</li>
+        <li><strong>Perdu :</strong> Touchez un tuyau, le sol ou le plafond.</li>
+        <li><strong>Difficulté :</strong> La vitesse augmente et l'écart entre les tuyaux diminue progressivement.</li>
+    </ul>
+</div>
+
+<canvas id="game" width="400" height="500"></canvas>
+
+<h2>Score : <span id="score">0</span></h2>
+<div id="message">Cliquez sur Démarrer ou sur l'écran pour commencer.</div>
+
+<script>
+const c = document.getElementById("game");
+const ctx = c.getContext("2d");
+const scoreDisplay = document.getElementById("score");
+const messageDisplay = document.getElementById("message");
+
+// --- Constantes du jeu (Initiales) ---
+const BIRD_SIZE = 20;
+const PIPE_WIDTH = 60;
+const INITIAL_PIPE_GAP = 110; 
+const PIPE_DISTANCE = 200; 
+const INITIAL_PIPE_SPEED = 3;
+const GRAVITY = 0.4;
+const JUMP_VELOCITY = -7;
+const GROUND_HEIGHT = 50; // Hauteur du sol
+const PIPE_SPEED_MAX = 6;
+const PIPE_GAP_MIN = 80;
+
+// --- Variables de jeu ---
+let bird, pipes, velocity, score, loop;
+let gameStarted = false;
+let isGameOver = false;
+let isPaused = false; // Nouvelle variable pour la pause
+let currentPipeSpeed; 
+let currentPipeGap;   
+
+// Dimensions
+const CANVAS_HEIGHT = c.height;
+const CANVAS_WIDTH = c.width;
+
+// --- Listeners ---
+document.getElementById("start").onclick = start;
+c.addEventListener("mousedown", jump); 
+c.addEventListener("touchstart", jump); 
+document.addEventListener("keydown", handleKeyInput);
+
+function handleKeyInput(e) {
+    if (e.key === ' ' || e.key === 'Space') {
+        e.preventDefault();
+        jump();
+    } else if (e.key === 'p' || e.key === 'P') {
+        togglePause();
+    }
+}
+
+function togglePause() {
+    if (!gameStarted || isGameOver) return;
+    
+    isPaused = !isPaused;
+    if (isPaused) {
+        if (loop) clearInterval(loop);
+        messageDisplay.innerText = "Jeu en pause (Appuyez sur P)";
+    } else {
+        loop = setInterval(update, 1000 / 60);
+        messageDisplay.innerText = "Jeu en cours...";
+    }
+}
+
+function jump(e) {
+    if (e) e.preventDefault(); 
+    if (isGameOver || isPaused) return;
+
+    if (!gameStarted) {
+        start();
+        return;
+    }
+    
+    velocity = JUMP_VELOCITY;
+}
+
+function start() {
+    if (loop) clearInterval(loop); 
+    
+    // Initialisation
+    bird = { x: 50, y: CANVAS_HEIGHT / 2, rotation: 0 }; // Ajout de rotation
+    velocity = 0;
+    pipes = [];
+    score = 0;
+    isGameOver = false;
+    isPaused = false;
+    gameStarted = true;
+    
+    // Initialisation de la difficulté
+    currentPipeSpeed = INITIAL_PIPE_SPEED;
+    currentPipeGap = INITIAL_PIPE_GAP;
+
+    scoreDisplay.innerText = 0;
+    messageDisplay.innerText = "Jeu en cours...";
+    
+    addPipe();
+    
+    loop = setInterval(update, 1000 / 60); 
+}
+
+function addPipe() {
+    const minTop = 50;
+    const maxTop = CANVAS_HEIGHT - GROUND_HEIGHT - currentPipeGap - 20; // 20 de marge du plafond
+    const topPipeHeight = Math.random() * (maxTop - minTop) + minTop;
+
+    pipes.push({
+        x: CANVAS_WIDTH,
+        top: topPipeHeight,
+        bottom: topPipeHeight + currentPipeGap, 
+        passed: false
+    });
+}
+
+function update() {
+    if (isPaused || isGameOver) return;
+    
+    // 1. Mouvement de l'oiseau
+    velocity += GRAVITY;
+    bird.y += velocity;
+
+    // Calcul de la rotation : plus la vitesse est grande, plus il tourne
+    bird.rotation = Math.min(Math.PI / 2, Math.max(-Math.PI / 4, velocity * 0.05));
+
+    // 2. Mouvement et génération des tuyaux
+    if (pipes.length === 0 || pipes[pipes.length - 1].x < CANVAS_WIDTH - PIPE_DISTANCE) {
+        addPipe();
+    }
+
+    pipes.forEach((p, index) => {
+        p.x -= currentPipeSpeed; 
+
+        // 3. Scoring et Augmentation de la Difficulté
+        if (!p.passed && p.x + PIPE_WIDTH < bird.x) {
+            score++;
+            p.passed = true;
+            
+            // Augmentation progressive de la difficulté
+            if (score > 0 && score % 3 === 0) { // Augmenter tous les 3 points
+                currentPipeSpeed = Math.min(PIPE_SPEED_MAX, currentPipeSpeed + 0.1); 
+                currentPipeGap = Math.max(PIPE_GAP_MIN, currentPipeGap - 2); 
+            }
+        }
+
+        // 4. Collision avec les tuyaux
+        const collisionX = bird.x + BIRD_SIZE > p.x && bird.x < p.x + PIPE_WIDTH;
+        const collisionY = bird.y < p.top || bird.y + BIRD_SIZE > p.bottom;
+
+        if (collisionX && collisionY) {
+            return gameOver();
+        }
+
+        // Nettoyage des tuyaux hors écran
+        if (p.x + PIPE_WIDTH < 0) {
+            pipes.splice(index, 1);
+        }
+    });
+
+    // 5. Collision sol/plafond
+    if (bird.y + BIRD_SIZE > CANVAS_HEIGHT - GROUND_HEIGHT || bird.y < 0) {
+        return gameOver();
+    }
+
+    draw();
+    scoreDisplay.innerText = score;
+}
+
+// --- Dessin Amélioré ---
+
+function draw() {
+    // Effacer le canvas
+    ctx.fillStyle = "#111";
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    // Dessiner le sol
+    ctx.fillStyle = "#228B22"; // Vert forêt
+    ctx.fillRect(0, CANVAS_HEIGHT - GROUND_HEIGHT, CANVAS_WIDTH, GROUND_HEIGHT);
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, CANVAS_HEIGHT - GROUND_HEIGHT, CANVAS_WIDTH, 2); // Ligne de démarcation
+
+    // Dessiner les tuyaux
+    ctx.fillStyle = "#2E8B57"; // Vert plus sombre
+    pipes.forEach(p => {
+        // Tuyau supérieur
+        ctx.fillRect(p.x, 0, PIPE_WIDTH, p.top);
+        // Tuyau inférieur
+        ctx.fillRect(p.x, p.bottom, PIPE_WIDTH, CANVAS_HEIGHT - GROUND_HEIGHT - p.bottom);
+        
+        // Dessin des bords de tuyau (visuel)
+        ctx.strokeStyle = "#4CAF50";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(p.x, 0, PIPE_WIDTH, p.top);
+        ctx.strokeRect(p.x, p.bottom, PIPE_WIDTH, CANVAS_HEIGHT - GROUND_HEIGHT - p.bottom);
+    });
+
+    // Dessiner l'oiseau (avec rotation)
+    drawBird();
+}
+
+function drawBird() {
+    ctx.save();
+    
+    // Déplacer l'origine de la rotation au centre de l'oiseau
+    const centerX = bird.x + BIRD_SIZE / 2;
+    const centerY = bird.y + BIRD_SIZE / 2;
+    
+    ctx.translate(centerX, centerY);
+    ctx.rotate(bird.rotation);
+    
+    // Dessiner l'oiseau centré sur la nouvelle origine
+    ctx.fillStyle = "yellow";
+    ctx.fillRect(-BIRD_SIZE / 2, -BIRD_SIZE / 2, BIRD_SIZE, BIRD_SIZE);
+    
+    // Dessin d'un œil simple
+    ctx.fillStyle = "black";
+    ctx.beginPath();
+    ctx.arc(BIRD_SIZE / 4, -BIRD_SIZE / 4, BIRD_SIZE / 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function gameOver() {
+    if (isGameOver) return; 
+    isGameOver = true;
+    gameStarted = false;
+    isPaused = true; // Empêcher la reprise
+    
+    if (loop) clearInterval(loop);
+    
+    // Animation de la chute finale
+    loop = setInterval(drawGameOver, 1000 / 60);
+
+    messageDisplay.innerText = "GAME OVER! Score final : " + score;
+
+    // Sauvegarde déclenchée après l'alerte
+    setTimeout(() => {
+        saveScore(score, "Jeu 5 — Flappy");
+        alert(`Partie terminée ! Score : ${score}`);
+    }, 500); 
+}
+
+function drawGameOver() {
+    // Si l'oiseau est déjà au sol, arrête l'animation de chute
+    if (bird.y + BIRD_SIZE >= CANVAS_HEIGHT - GROUND_HEIGHT) {
+        clearInterval(loop);
+        loop = null;
+        return;
+    }
+    
+    // Simuler la gravité pour la chute après collision
+    velocity += GRAVITY;
+    bird.y += velocity;
+    bird.rotation = Math.min(Math.PI / 2, bird.rotation + 0.1); // Rotation maximale
+    
+    draw();
+}
+
+function saveScore(score, game){
+  const name=localStorage.getItem("gh_player")||"Anonyme";
+  try {
+      const arr=JSON.parse(localStorage.getItem("gh_scores")||"[]");
+      arr.push({name,score,game});
+      localStorage.setItem("gh_scores",JSON.stringify(arr));
+  } catch(e) {
+      console.error("Erreur lors de la sauvegarde du score:", e);
+  }
+}
+
+// Afficher un message initial
+document.addEventListener('DOMContentLoaded', () => {
+    messageDisplay.innerText = "Cliquez sur Démarrer ou sur l'écran pour commencer.";
+});
+</script>
+</body>
+</html>

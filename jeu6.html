@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jeu 6 - Pong Ultime</title>
+<style>
+body{background:#0f1724;color:white;font-family:Arial;text-align:center;}
+canvas{
+    background:#111;
+    margin-top:20px;
+    border-radius:6px;
+    border: 2px solid #ff8c00; 
+    cursor: none; /* Cache le curseur standard pendant le jeu */
+}
+button{padding:10px 20px;margin:10px;border-radius:8px;border:0;cursor:pointer;font-weight:bold;}
+#start{background:#00ff66;} #back{background:#ff8c00;}
+#instructions {
+    max-width: 600px;
+    margin: 10px auto;
+    padding: 15px;
+    background: #0d141e;
+    border-radius: 8px;
+    text-align: left;
+    font-size: 14px;
+    color: #9aa0a6;
+}
+#instructions strong { color: white; }
+#scoreContainer {
+    display: flex;
+    justify-content: center;
+    gap: 50px;
+    margin-top: 10px;
+    font-size: 24px;
+    font-weight: bold;
+}
+#message {
+    color: #00ff66;
+    margin-top: 10px;
+    font-size: 1.2em;
+}
+</style>
+</head>
+<body>
+
+<h1>Jeu 6 — Pong Ultime (vs IA)</h1>
+
+<button id="start">Démarrer</button>
+<button id="back" onclick="location.href='index.html'">Retour</button>
+
+<div id="instructions">
+    <h3>Mode d'emploi :</h3>
+    <ul>
+        <li><strong>Objectif :</strong> Marquer <strong id="winningScoreDisplay">5</strong> points avant l'adversaire IA.</li>
+        <li><strong>Contrôles :</strong> Déplacez la souris ou glissez votre doigt sur la zone de jeu. Appuyez sur <strong>P</strong> pour Pause.</li>
+        <li><strong>Règles :</strong> La balle accélère à chaque coup et l'angle de rebond dépend de votre frappe.</li>
+        <li><strong>Difficulté :</strong> L'IA devient plus rapide et plus précise à mesure que le jeu progresse.</li>
+    </ul>
+</div>
+
+<canvas id="game" width="600" height="400"></canvas>
+
+<div id="scoreContainer">
+    <span>Joueur : <span id="playerScore">0</span></span>
+    <span>IA : <span id="botScore">0</span></span>
+</div>
+<div id="message">Cliquez sur Démarrer ou déplacez la souris sur le canvas pour commencer.</div>
+
+<script>
+// --- Constantes du Jeu ---
+const PADDLE_HEIGHT = 100;
+const PADDLE_WIDTH = 10;
+const BALL_SIZE = 10;
+const CANVAS_WIDTH = 600;
+const CANVAS_HEIGHT = 400;
+const MAX_BALL_SPEED = 14; // Augmentation de la vitesse maximale
+const INITIAL_BALL_SPEED = 6;
+const WINNING_SCORE = 5; 
+const BOT_MAX_SPEED = 8; // Vitesse maximale de déplacement du bot
+
+// --- Variables de Jeu ---
+let pad, pad2, ball, velX, velY, playerScore, botScore, loop;
+let currentSpeed;
+let active = false;
+let isPaused = false; // Nouvelle variable pour la pause
+let botAccuracy = 0.6; // Précision initiale du bot (0.6 = 60% de précision)
+
+const c = document.getElementById("game");
+const ctx = c.getContext("2d");
+const playerScoreDisplay = document.getElementById("playerScore");
+const botScoreDisplay = document.getElementById("botScore");
+const messageDisplay = document.getElementById("message");
+
+document.getElementById("winningScoreDisplay").textContent = WINNING_SCORE;
+document.getElementById("start").onclick = start;
+document.addEventListener("keydown", handleKeyInput);
+
+// --- Contrôle du Joueur (Souris et Tactile) ---
+c.addEventListener("mousemove", handlePlayerMove);
+c.addEventListener("touchmove", handlePlayerMove);
+
+function handlePlayerMove(e) {
+  if (!active) return;
+  e.preventDefault();
+
+  const r = c.getBoundingClientRect();
+  let clientY = e.clientY;
+  if (e.touches && e.touches.length > 0) {
+      clientY = e.touches[0].clientY;
+  }
+  
+  let newY = clientY - r.top - (PADDLE_HEIGHT / 2);
+  pad.y = Math.max(0, Math.min(newY, CANVAS_HEIGHT - PADDLE_HEIGHT));
+}
+
+function handleKeyInput(e) {
+    if (e.key === 'p' || e.key === 'P') {
+        togglePause();
+    }
+}
+
+function togglePause() {
+    if (!active) return;
+    
+    isPaused = !isPaused;
+    if (isPaused) {
+        if (loop) clearInterval(loop);
+        messageDisplay.innerText = "Jeu en pause (Appuyez sur P)";
+    } else {
+        loop = setInterval(update, 1000 / 60);
+        messageDisplay.innerText = "Jeu en cours...";
+    }
+}
+
+
+function start(){
+  if (loop) clearInterval(loop);
+  if (active) return; // Empêche le redémarrage pendant le jeu
+
+  active = true;
+  isPaused = false;
+  
+  // Réinitialisation des scores
+  playerScore = 0;
+  botScore = 0;
+  playerScoreDisplay.innerText = 0;
+  botScoreDisplay.innerText = 0;
+  
+  // Raquette Joueur (Gauche)
+  pad = {x: 10, y: (CANVAS_HEIGHT / 2) - (PADDLE_HEIGHT / 2), width: PADDLE_WIDTH, height: PADDLE_HEIGHT};
+  // Raquette IA (Droite)
+  pad2 = {x: CANVAS_WIDTH - 20, y: (CANVAS_HEIGHT / 2) - (PADDLE_HEIGHT / 2), width: PADDLE_WIDTH, height: PADDLE_HEIGHT};
+  
+  messageDisplay.innerText = "Jeu en cours...";
+  
+  currentSpeed = INITIAL_BALL_SPEED;
+  resetBall(1); // La balle part vers le joueur (droite)
+  
+  loop = setInterval(update, 1000 / 60); // 60 FPS
+}
+
+// Réinitialisation de la balle après un point marqué
+function resetBall(direction = 1){ // direction: 1 = vers droite, -1 = vers gauche
+    ball = {x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2, size: BALL_SIZE};
+    
+    // La vitesse initiale est constante après un point
+    currentSpeed = INITIAL_BALL_SPEED; 
+    
+    const initialAngle = (Math.random() * Math.PI / 2) - Math.PI / 4;
+    
+    velX = currentSpeed * Math.cos(initialAngle) * direction;
+    velY = currentSpeed * Math.sin(initialAngle);
+}
+
+// --- Logique du Bot (Améliorée) ---
+function updateBot(){
+    // La difficulté augmente avec le score du joueur (max 0.95 de précision)
+    const currentAccuracy = Math.min(0.95, botAccuracy + (playerScore + botScore) * 0.05); 
+    const botMoveSpeed = Math.min(BOT_MAX_SPEED, 3 + (playerScore + botScore) * 0.5);
+    
+    // La cible du bot est légèrement décalée pour simuler une erreur humaine
+    const offset = (Math.random() - 0.5) * PADDLE_HEIGHT * (1 - currentAccuracy);
+    const targetY = ball.y + BALL_SIZE / 2 + offset;
+    const botCenter = pad2.y + PADDLE_HEIGHT / 2;
+    
+    const deltaY = targetY - botCenter;
+    
+    if (Math.abs(deltaY) > 5) { // Ne bouge pas pour un petit delta
+        let move = deltaY > 0 ? botMoveSpeed : -botMoveSpeed;
+        
+        // Limiter le mouvement pour qu'il ne dépasse pas la vitesse maximale
+        move = Math.min(Math.abs(move), Math.abs(deltaY)) * Math.sign(move);
+        
+        pad2.y = Math.max(0, Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, pad2.y + move));
+    }
+}
+
+
+// --- Logique de Rebond (Améliorée) ---
+function handlePaddleCollision(paddle) {
+    // Vérification de collision (AABB)
+    if (ball.x + BALL_SIZE > paddle.x && ball.x < paddle.x + paddle.width && 
+        ball.y + BALL_SIZE > paddle.y && ball.y < paddle.y + paddle.height) 
+    {
+        // 1. Augmentation de la vitesse
+        currentSpeed = Math.min(MAX_BALL_SPEED, currentSpeed + 0.5);
+        
+        // 2. Calcul du point d'impact
+        const hitPoint = (ball.y + BALL_SIZE / 2) - (paddle.y + PADDLE_HEIGHT / 2);
+        const normalizedHit = hitPoint / (PADDLE_HEIGHT / 2);
+        const maxBounceAngle = Math.PI / 3; // 60 degrés
+        const bounceAngle = normalizedHit * maxBounceAngle;
+        
+        // 3. Redéfinition des vélocités avec la nouvelle vitesse
+        velX = currentSpeed * Math.cos(bounceAngle);
+        velY = currentSpeed * Math.sin(bounceAngle);
+        
+        // 4. Assurer la bonne direction (rebond vers l'arrière)
+        if (paddle === pad && velX < 0) velX *= -1;
+        if (paddle === pad2 && velX > 0) velX *= -1;
+
+        // 5. Empêcher la balle de coller à la raquette
+        if (paddle === pad) ball.x = pad.x + PADDLE_WIDTH;
+        if (paddle === pad2) ball.x = pad2.x - BALL_SIZE;
+        
+        return true;
+    }
+    return false;
+}
+
+// --- Logique de Mise à Jour (Boucle de Jeu) ---
+function update(){
+    if (!active || isPaused) return;
+    
+    // 1. Mouvement de la balle et du bot
+    ball.x += velX;
+    ball.y += velY;
+    updateBot();
+
+    // 2. Collision avec les murs Haut/Bas
+    if (ball.y < 0 || ball.y + BALL_SIZE > CANVAS_HEIGHT) {
+        velY *= -1;
+        // Assurer que la balle reste dans les limites
+        if (ball.y < 0) ball.y = 0;
+        if (ball.y + BALL_SIZE > CANVAS_HEIGHT) ball.y = CANVAS_HEIGHT - BALL_SIZE;
+    }
+
+    // 3. Collision avec les Raquettes
+    handlePaddleCollision(pad);
+    handlePaddleCollision(pad2);
+
+    // 4. Point marqué
+    if (ball.x < -BALL_SIZE) {
+        // La balle sort à gauche -> L'IA marque
+        botScore++;
+        botScoreDisplay.innerText = botScore;
+        if (botScore >= WINNING_SCORE) return gameOver();
+        resetBall(-1); // Relance la balle vers le joueur
+    }
+    if (ball.x > CANVAS_WIDTH) {
+        // La balle sort à droite -> Le Joueur marque
+        playerScore++;
+        playerScoreDisplay.innerText = playerScore;
+        if (playerScore >= WINNING_SCORE) return gameOver();
+        resetBall(1); // Relance la balle vers l'IA
+    }
+
+    draw();
+}
+
+// --- Dessin sur le Canvas (Effet de Vitesse) ---
+function draw(){
+    // Fond
+    ctx.fillStyle = "#111";
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    
+    // Ligne centrale
+    ctx.strokeStyle = "#444";
+    ctx.beginPath();
+    ctx.setLineDash([5, 15]);
+    ctx.moveTo(CANVAS_WIDTH / 2, 0);
+    ctx.lineTo(CANVAS_WIDTH / 2, CANVAS_HEIGHT);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Raquettes (Joueur et IA)
+    ctx.fillStyle = "white";
+    ctx.fillRect(pad.x, pad.y, pad.width, pad.height);
+    ctx.fillRect(pad2.x, pad2.y, pad2.width, pad2.height);
+
+    // Balle et effet de traînée (pour visualiser la vitesse)
+    const trailLength = 5; // Longueur de la traînée
+    const baseColor = 255;
+    
+    for (let i = 0; i < trailLength; i++) {
+        const opacity = 1 - (i / trailLength);
+        const trailX = ball.x - velX * i * 0.1;
+        const trailY = ball.y - velY * i * 0.1;
+        
+        // Traînée blanche semi-transparente
+        ctx.fillStyle = `rgba(255, 255, 255, ${opacity * 0.5})`;
+        ctx.fillRect(trailX, trailY, ball.size, ball.size);
+    }
+    
+    // Balle principale (pleine opacité)
+    ctx.fillStyle = "white";
+    ctx.fillRect(ball.x, ball.y, ball.size, ball.size);
+}
+
+// --- Fin de Jeu ---
+function gameOver(){
+  active = false;
+  isPaused = true;
+  if (loop) clearInterval(loop);
+  
+  const winner = (playerScore >= WINNING_SCORE) ? "LE JOUEUR" : "L'IA";
+  const finalScore = playerScore;
+  
+  // Sauvegarde du score
+  saveScore(finalScore, "Jeu 6 — Pong");
+  
+  messageDisplay.innerText = `${winner} GAGNE ! Score final : ${playerScore} - ${botScore}.`;
+  
+  alert(`Fin de la partie ! ${winner} gagne (${playerScore} - ${botScore}).`);
+}
+
+// --- Fonction de Sauvegarde de Score ---
+function saveScore(score,game){
+  const name=localStorage.getItem("gh_player")||"Anonyme";
+  try {
+      const arr=JSON.parse(localStorage.getItem("gh_scores")||"[]");
+      arr.push({name,score,game});
+      localStorage.setItem("gh_scores",JSON.stringify(arr));
+  } catch(e) {
+      console.error("Erreur lors de la sauvegarde du score:", e);
+  }
+}
+</script>
+
+</body>
+</html>

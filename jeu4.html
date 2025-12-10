@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jeu 4 - Snake Ultime</title>
+<style>
+body{background:#0f1724;color:white;font-family:Arial;text-align:center;user-select:none;}
+canvas{
+    background:#111;
+    margin-top:20px;
+    border-radius:6px;
+    border: 2px solid #333;
+}
+button{padding:10px 20px;border-radius:8px;margin:10px;border:0;font-weight:bold;cursor:pointer;}
+#start{background:#00ff66;} #back{background:#ff8c00;}
+#instructions {
+    max-width: 600px;
+    margin: 10px auto;
+    padding: 15px;
+    background: #0d141e;
+    border-radius: 8px;
+    text-align: left;
+    font-size: 14px;
+    color: #9aa0a6;
+}
+#instructions strong { color: white; }
+#statsDisplay {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    margin-top: 15px;
+}
+</style>
+</head>
+<body>
+
+<h1>Jeu 4 — Snake Ultime</h1>
+
+<button id="start">Démarrer</button>
+<button id="back" onclick="location.href='index.html'">Retour</button>
+
+<div id="instructions">
+    <h3>Mode d'emploi :</h3>
+    <ul>
+        <li><strong>Objectif :</strong> Mangez les cibles (Rouge = 1 pt, Or = 5 pts).</li>
+        <li><strong>Contrôles :</strong> Touches <strong>Flèche</strong> ou **balayez (swipe)** sur l'écran.</li>
+        <li><strong>Perdu :</strong> Touchez les bords, le corps du serpent ou les **Murs Temporaires** (bleus).</li>
+        <li><strong>Difficulté :</strong> Le serpent **accélère** après chaque point !</li>
+    </ul>
+</div>
+
+<div id="statsDisplay">
+    <h2>Score : <span id="score">0</span></h2>
+    <h2>Vitesse : <span id="speedDisplay">X</span> ms/case</h2>
+</div>
+
+<canvas id="game" width="400" height="400"></canvas>
+
+<script>
+// --- Constantes du Jeu ---
+const GRID_SIZE = 20; 
+const TILE_SIZE = 400 / GRID_SIZE;
+const INITIAL_SPEED = 120; // Délai initial (ms)
+const MIN_SPEED = 50; // Délai minimum (ms)
+const SPEED_DECREASE_PER_POINT = 3; // ms de réduction
+const WALL_CYCLE_TIME = 15; // secondes
+
+// --- Variables de Jeu ---
+let snake, dir, food, bonusFood, score, loop;
+let nextDir;
+let currentSpeed;
+let walls = [];
+let gameTimeSeconds = 0;
+let active = false; // NOUVEAU: Indicateur d'état du jeu
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const speedDisplay = document.getElementById("speedDisplay");
+
+document.getElementById("start").onclick = start;
+
+// --- Contrôles du joueur (Clavier/Swipe) ---
+let touchStartX, touchStartY;
+
+document.addEventListener("keydown", handleKeyInput);
+canvas.addEventListener('touchstart', handleTouchStart, false);
+canvas.addEventListener('touchmove', handleTouchMove, false);
+
+function handleKeyInput(e) {
+    if (!active && e.key.startsWith("Arrow")) {
+        // Permet de démarrer le jeu en appuyant sur une flèche
+        start(); 
+    }
+    if (!active) return; // Ignore toute autre commande si le jeu est perdu
+
+    // Utiliser nextDir pour mettre en file d'attente la prochaine direction
+    if (e.key === "ArrowUp" && dir !== "down") nextDir = "up";
+    if (e.key === "ArrowDown" && dir !== "up") nextDir = "down";
+    if (e.key === "ArrowLeft" && dir !== "right") nextDir = "left";
+    if (e.key === "ArrowRight" && dir !== "left") nextDir = "right";
+}
+
+function handleTouchStart(e) {
+    e.preventDefault();
+    if (!active) {
+        start(); // Démarrer au premier swipe/toucher
+        return;
+    }
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+}
+
+function handleTouchMove(e) {
+    if (!touchStartX || !active) return;
+    
+    const touchEndX = e.touches[0].clientX;
+    const touchEndY = e.touches[0].clientY;
+    
+    const diffX = touchEndX - touchStartX;
+    const diffY = touchEndY - touchStartY;
+
+    if (Math.abs(diffX) > Math.abs(diffY)) {
+        // Mouvement Horizontal (Gauche/Droite)
+        if (diffX > 0 && dir !== "left") nextDir = "right";
+        else if (diffX < 0 && dir !== "right") nextDir = "left";
+    } else {
+        // Mouvement Vertical (Haut/Bas)
+        if (diffY > 0 && dir !== "up") nextDir = "down";
+        else if (diffY < 0 && dir !== "down") nextDir = "up";
+    }
+    
+    // Une fois la direction déterminée, on réinitialise pour le prochain swipe distinct
+    touchStartX = null;
+    touchStartY = null;
+}
+
+
+// --- Démarrage du Jeu ---
+function start(){
+    if (loop) clearInterval(loop);
+    
+    // Réinitialisation de l'état
+    active = true;
+    snake = [{x: Math.floor(GRID_SIZE / 4), y: Math.floor(GRID_SIZE / 2)}]; 
+    dir = "right";
+    nextDir = "right";
+    score = 0;
+    currentSpeed = INITIAL_SPEED;
+    gameTimeSeconds = 0;
+    walls = [];
+    
+    food = rand();
+    bonusFood = null; 
+    
+    document.getElementById("score").innerText = 0;
+    speedDisplay.innerText = currentSpeed;
+    
+    // Lancement de la boucle de jeu
+    loop = setInterval(gameCycle, currentSpeed);
+}
+
+// Lancement du cycle de jeu (update et timer)
+function gameCycle() {
+    if (!active) {
+        clearInterval(loop);
+        return;
+    }
+    update();
+    gameTimeSeconds++;
+    
+    // Si la vitesse a changé, la boucle doit être relancée
+    if (currentSpeed !== loop._delay) {
+        clearInterval(loop);
+        loop = setInterval(gameCycle, currentSpeed);
+        speedDisplay.innerText = currentSpeed;
+    }
+}
+
+// --- Position Aléatoire de la Nourriture ---
+function rand(isBonus = false){
+    let newFood;
+    let maxTries = 100;
+    let i = 0;
+    
+    do {
+        newFood = {
+            x: Math.floor(Math.random() * GRID_SIZE), 
+            y: Math.floor(Math.random() * GRID_SIZE),
+            type: isBonus ? 'bonus' : 'normal'
+        };
+        i++;
+    // S'assurer que la nourriture et les murs n'apparaissent pas sur le corps
+    } while (snake.some(s => s.x === newFood.x && s.y === newFood.y) || 
+             walls.some(w => w.x === newFood.x && w.y === newFood.y) || i > maxTries);
+    
+    if (i >= maxTries) return null;
+    return newFood;
+}
+
+// --- Logique de Mise à Jour (Boucle de Jeu) ---
+function update(){
+    // Appliquer la direction en file d'attente
+    dir = nextDir; 
+
+    const head = {...snake[0]};
+
+    if(dir==="up") head.y--;
+    if(dir==="down") head.y++;
+    if(dir==="left") head.x--;
+    if(dir==="right") head.x++;
+
+    // 1. Détection de collision (Mur, Soi-même, Murs Temporaires)
+    if(head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE || hitSelf(head) || hitWall(head)) {
+        return gameOver();
+    }
+
+    // Ajouter la nouvelle tête
+    snake.unshift(head);
+
+    let ateFood = false;
+    let pointsGained = 0;
+
+    // 2. Gestion de la Nourriture Normale (Rouge)
+    if(food && head.x === food.x && head.y === food.y){
+        pointsGained += 1;
+        food = rand();
+        ateFood = true;
+    } 
+    
+    // 3. Gestion de la Nourriture Bonus (Or)
+    if(bonusFood && head.x === bonusFood.x && head.y === bonusFood.y){
+        pointsGained += 5; // Plus de points !
+        bonusFood = null; 
+        ateFood = true;
+    } 
+    
+    if (ateFood) {
+        score += pointsGained;
+        document.getElementById("score").innerText = score;
+        
+        // ACCÉLÉRATION : Plus le score est haut, plus on est rapide
+        if (currentSpeed > MIN_SPEED) { 
+             currentSpeed = Math.max(MIN_SPEED, currentSpeed - (SPEED_DECREASE_PER_POINT * pointsGained));
+             // Forcer le changement de vitesse dans la prochaine gameCycle
+             loop._delay = currentSpeed; 
+        }
+        
+        // Chance d'apparition de nourriture bonus (par exemple, 20% après avoir mangé)
+        if (!bonusFood && Math.random() < 0.20) {
+            bonusFood = rand(true);
+        }
+
+    } else {
+        // Déplacer le serpent (supprimer la queue)
+        snake.pop();
+    }
+
+    // 4. Gestion des Murs Temporaires
+    updateWalls();
+    
+    draw();
+}
+
+// --- Gestion des Murs Temporaires (NOUVEAU) ---
+function updateWalls() {
+    // Fréquence de mise à jour des murs (toutes les 15s du temps de jeu)
+    const framesPerSecond = 1000 / currentSpeed;
+    const framesPerCycle = WALL_CYCLE_TIME * framesPerSecond;
+    
+    // Vérifier si nous sommes au début d'un cycle (0s, 15s, 30s...)
+    if (gameTimeSeconds % framesPerCycle === 0) {
+        
+        // Vider les murs après la première moitié du cycle (murs INVISIBLES)
+        if ((gameTimeSeconds / framesPerCycle) % 2 !== 0) {
+            walls = [];
+        } else {
+             // Générer de nouveaux murs (murs VISIBLES)
+             const corridorY = Math.floor(GRID_SIZE / 3) + Math.floor(Math.random() * (GRID_SIZE / 3));
+             
+             walls = [];
+             for(let x = 3; x < GRID_SIZE - 3; x++) {
+                 // Laisser un passage de 3 cases au centre
+                 if (x < 8 || x > 11) {
+                     walls.push({x: x, y: corridorY, active: true});
+                 }
+             }
+        }
+    }
+}
+
+// --- Dessin sur le Canvas ---
+function draw(){
+    // Arrière-plan
+    ctx.fillStyle = "#111";
+    ctx.fillRect(0,0,400,400);
+
+    // 1. Dessin des Murs Temporaires (Bleus)
+    ctx.fillStyle = "#4682b4"; 
+    walls.filter(w => w.active).forEach(w => {
+        ctx.fillRect(w.x * TILE_SIZE, w.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    });
+
+    // 2. Dessin du Serpent
+    ctx.fillStyle = "lime";
+    snake.forEach((s, index) => {
+        ctx.fillStyle = index === 0 ? "#00ff66" : "lime"; 
+        ctx.fillRect(s.x * TILE_SIZE, s.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        ctx.strokeStyle = '#0f1724';
+        ctx.strokeRect(s.x * TILE_SIZE, s.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    });
+
+    // 3. Dessin de la Nourriture Normale (Rouge)
+    if (food) {
+        ctx.fillStyle = "red";
+        ctx.beginPath();
+        ctx.arc(food.x * TILE_SIZE + TILE_SIZE/2, food.y * TILE_SIZE + TILE_SIZE/2, TILE_SIZE/2 - 2, 0, Math.PI*2);
+        ctx.fill();
+    }
+
+    // 4. Dessin de la Nourriture Bonus (Or/Jaune)
+    if (bonusFood) {
+        ctx.fillStyle = "gold";
+        ctx.beginPath();
+        ctx.arc(bonusFood.x * TILE_SIZE + TILE_SIZE/2, bonusFood.y * TILE_SIZE + TILE_SIZE/2, TILE_SIZE/2 - 2, 0, Math.PI*2);
+        ctx.fill();
+    }
+}
+
+// --- Détection de collision ---
+function hitSelf(head){
+    return snake.some((s,i) => i > 0 && s.x === head.x && s.y === head.y);
+}
+
+function hitWall(head){
+    return walls.some(w => w.active && w.x === head.x && w.y === head.y);
+}
+
+// --- Fin de Jeu ---
+function gameOver(){
+    // Correction de la boucle : Mettre l'état à false et arrêter l'intervalle
+    active = false;
+    clearInterval(loop);
+    
+    saveScore(score, "Jeu 4 — Snake");
+    
+    alert("GAME OVER ! Score final : " + score);
+}
+
+// --- Fonction de Sauvegarde de Score ---
+function saveScore(score,game){
+    const name = localStorage.getItem("gh_player") || "Anonyme";
+    try {
+        const arr = JSON.parse(localStorage.getItem("gh_scores") || "[]");
+        arr.push({name,score,game});
+        localStorage.setItem("gh_scores",JSON.stringify(arr));
+    } catch(e) {
+        console.error("Erreur lors de la sauvegarde du score:", e);
+    }
+}
+</script>
+</body>
+</html>
